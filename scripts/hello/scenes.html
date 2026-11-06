@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --bg: #fff8ec; --ink: #2b2118; --petal: #f2b632; --leaf: #5c8a4a; }
+  html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); color: var(--ink);
+               font-family: "Noto Sans Thai", "Thonburi", sans-serif; overflow: hidden; }
+  section { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+  h1 { font-size: 150px; margin: 0; animation: rise .8s cubic-bezier(.2,.8,.2,1) both .2s; }
+  p  { font-size: 56px; margin: 24px 80px; animation: rise .8s cubic-bezier(.2,.8,.2,1) both .6s; }
+  .flower { width: 360px; height: 360px; animation: bloom 1.4s cubic-bezier(.2,.9,.3,1.2) both; }
+  .steps { display: grid; gap: 40px; }
+  .step { font-size: 64px; padding: 36px 64px; border-radius: 36px; background: #fff;
+          box-shadow: 0 12px 40px #0001; animation: rise .7s cubic-bezier(.2,.8,.2,1) both; }
+  .step:nth-child(2) { animation-delay: 1.2s } .step:nth-child(3) { animation-delay: 2.4s }
+  #caption { position: absolute; left: 60px; right: 60px; bottom: 220px; text-align: center;
+             font-size: 52px; line-height: 1.4; font-weight: 600; }
+  #caption:empty { display: none }
+  @keyframes rise  { from { opacity: 0; transform: translateY(60px) } }
+  @keyframes bloom { from { opacity: 0; transform: scale(.2) rotate(-90deg) } }
+</style>
+</head>
+<body>
+  <section data-scene="intro">
+    <div>
+      <svg class="flower" viewBox="-50 -50 100 100">
+        <g fill="var(--petal)">
+          <ellipse rx="12" ry="26" cy="-22"/><ellipse rx="12" ry="26" cy="-22" transform="rotate(72)"/>
+          <ellipse rx="12" ry="26" cy="-22" transform="rotate(144)"/><ellipse rx="12" ry="26" cy="-22" transform="rotate(216)"/>
+          <ellipse rx="12" ry="26" cy="-22" transform="rotate(288)"/>
+        </g>
+        <circle r="13" fill="var(--leaf)"/>
+      </svg>
+      <h1>Bloom</h1>
+      <p>สคริปต์ไทย → วิดีโอ</p>
+    </div>
+  </section>
+  <section data-scene="flow">
+    <div class="steps">
+      <div class="step">✍️ script.md</div>
+      <div class="step">🎨 scenes.html</div>
+      <div class="step">🎬 bloom build</div>
+    </div>
+  </section>
+  <div id="caption"></div>
+</body>
+</html>

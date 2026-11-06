@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+.bloom/
+output/*
+!output/.gitkeep
+# stock music / footage is licensed per user, never redistributed with the code
+assets/*
+!assets/.gitkeep
+.DS_Store
