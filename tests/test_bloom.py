@@ -340,6 +340,33 @@ def test_takes():
         assert review.update_takes(f, None, "4=2, 12=1") == {"12": 0, "17": 1, "4": 1}  # picks: page take K -> K-1
 
 
+def test_master():
+    import wave
+    import numpy as np
+    from bloom import mix
+
+    with tempfile.TemporaryDirectory() as d:
+        # a quiet, buzzy voice in syllables, some louder, each starting with a sharp burst like a consonant
+        sr, rng = 24000, np.random.default_rng(0)
+        t = np.arange(sr * 3) / sr
+        env = np.where((t * 4) % 1 < 0.7, 1.0, 0.0) * np.where((t * 2) % 1 < 0.5, 0.04, 0.12)
+        x = (2 * ((150 * t) % 1) - 1) * env
+        for s in np.flatnonzero(np.diff(env, prepend=0) > 0):
+            x[s:s + 72] += rng.uniform(-0.4, 0.4, 72)
+        clip = Path(d) / "a.wav"
+        with wave.open(str(clip), "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(sr), w.writeframes((x * 32767).astype("<i2").tobytes())
+        out = mix.master([(clip, 0.5)], 4.0, Path(d) / "m.wav")
+        with wave.open(str(out)) as w:
+            y = np.frombuffer(w.readframes(w.getnframes()), "<i2") / 32768
+        assert np.abs(y).max() <= 0.85  # limited below -1.4 dBFS
+        # near the target; the safety limiter may take a little (here 1 dB: a burst on every syllable; 0.3 dB on a real dub)
+        assert abs(mix._lufs(["ffmpeg", "-hide_banner", "-nostats", "-i", str(out)], [], "[0:a]") - mix.VOICE_LUFS) < 1.5
+        with_bed = mix.master([(clip, 0.5)], 4.0, Path(d) / "b.wav", music=clip, sfx=clip)  # the build path: music and effects
+        with wave.open(str(with_bed)) as w:
+            assert np.abs(np.frombuffer(w.readframes(w.getnframes()), "<i2") / 32768).max() <= 0.85
+
+
 def test_audition():
     from bloom import dub, review
 
@@ -417,6 +444,7 @@ if __name__ == "__main__":
     test_partition()
     test_lexicon()
     test_takes()
+    test_master()
     test_audition()
     test_review()
     test_bench_scoring()
