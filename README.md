@@ -2,6 +2,10 @@
 
 Turn a Thai voiceover script into a finished, animated short video. Part of the Daisy Technology family.
 
+[![Bloom's intro: "Bloom", Thai script in, finished video out](docs/media/bloom-intro.jpg)](https://daisy-technology.github.io/blooms/#intro)
+
+[Watch the 33-second intro](https://daisy-technology.github.io/blooms/#intro): Thai narration with subtitles, made with Bloom itself from [`scripts/intro`](scripts/intro). The site is at [daisy-technology.github.io/blooms](https://daisy-technology.github.io/blooms/).
+
 You write two files: the narration (`script.md`) and the visuals as an animated web page (`scenes.html`). `bloom build` voices each scene, lays the clips on a timeline, writes subtitles, renders the page frame by frame in a headless browser, scores it with generated music and sound effects, and muxes it all into an MP4.
 
 ```
@@ -13,7 +17,7 @@ scenes.html ─► render (Playwright → ffmpeg, picture only) ─┬─► sou
 
 Each scene lasts exactly as long as its voice clip plus a short pause, so picture and narration stay in sync without timing anything by hand.
 
-Bloom also voices videos made elsewhere: `bloom dub` reads a video's captions and speaks each one as it appears (see Voice a video that already has captions). A short tour lives in [`docs/index.html`](docs/index.html).
+Bloom also voices videos made elsewhere: `bloom dub` reads a video's captions and speaks each one as it appears (see Voice a video that already has captions).
 
 ## Set up
 
