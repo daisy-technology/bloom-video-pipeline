@@ -88,7 +88,7 @@ def cut_from_profile(name: str, word: str, out: Path) -> Path:
         w16 = Path(d) / "a.wav"
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(ref), "-ar", str(SR), "-ac", "1", str(w16)], check=True)
         lines = subprocess.run(["whisper-cli", "-m", str(asr.MODEL), "-l", "th", "-ml", "1", "-sow", "-np", "-f", str(w16)],
-                               capture_output=True, text=True, check=True).stdout.splitlines()
+                               capture_output=True, encoding="utf-8", errors="replace", check=True).stdout.splitlines()
     key = asr.normalize(word)
     for line in lines:
         if "-->" in line and key and key in asr.normalize(line.split("]", 1)[1]):

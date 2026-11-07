@@ -175,7 +175,7 @@ def devices() -> None:
         print("on Linux: arecord -l (use the card name as --device)")
         return
     out = subprocess.run(["ffmpeg", "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-                         capture_output=True, text=True).stderr
+                         capture_output=True, encoding="utf-8", errors="replace").stderr
     mics = out.split("audio devices:")[-1] if "audio devices:" in out else ""
     for line in mics.splitlines():
         if "] [" in line:
