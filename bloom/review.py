@@ -75,7 +75,7 @@ def _marked(reference: str, heard: str) -> str:
 def page(lines: list[dict], out_html: Path, video: Path, title: str, voice_spec: str, retake: str) -> Path:
     """Write the review page. `retake` is the exact re-run command with `{n}` where the line number goes."""
     here = out_html.parent
-    rel = lambda p: html.escape(os.path.relpath(p, here))  # noqa: E731
+    rel = lambda p: html.escape(Path(os.path.relpath(p, here)).as_posix())  # noqa: E731
     bloom = f"uv run --project {Path(__file__).resolve().parent.parent} bloom"
     flagged = [ln for ln in lines if ln["flag"]]
     cards = []
@@ -187,7 +187,7 @@ def audition_page(entries: list[dict], out_html: Path, voice_spec: str, use: str
         rows = "".join(
             f'<div class="take"><label><input type="radio" name="l{e["n"]}" value="{k + 1}"{" checked" if k == e["current"] else ""}>'
             f' Take {k + 1}{" <small>in the video now</small>" if k == e["current"] else ""}</label>'
-            f'<audio controls preload="none" src="{html.escape(os.path.relpath(w, here))}"></audio>'
+            f'<audio controls preload="none" src="{html.escape(Path(os.path.relpath(w, here)).as_posix())}"></audio>'
             f'<span class="h" lang="th">{html.escape(h)}</span></div>' for k, w, h in e["takes"])
         pace = f" · spoken {e['tempo']:.2f}x to keep up" if e["tempo"] > 1.001 else ""
         cards.append(f'<article><h2>#{e["n"]}{pace}</h2><p lang="th">{html.escape(e["shown"])}</p>'

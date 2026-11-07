@@ -155,7 +155,7 @@ def main() -> None:
             r["avg"] = sum(x["d"] for x in g) / len(g)
     rows.sort(key=lambda r: (r["avg"], r["d"]))
     here = a.out.resolve().parent
-    rel = lambda p: html.escape(os.path.relpath(p, here))  # noqa: E731
+    rel = lambda p: html.escape(Path(os.path.relpath(p, here)).as_posix())  # noqa: E731
     body = "".join(
         f"<tr><td class=n>{i}</td><td lang=th><b>{html.escape(r['spelling'])}</b></td><td><code>{html.escape(r['voice'])}</code> · take {r['take']}</td>"
         f"<td class=n>{r['avg']:.1f}</td><td class=n>{r['d']:.1f}</td><td><audio controls preload=none src=\"{rel(r['wav'])}\"></audio></td>"
