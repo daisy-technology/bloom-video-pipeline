@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<style>
+  /* The look of docs/index.html: system type, near-white page, one rose accent, the caption/voice pair. 1920x1080 */
+  :root { --bg: #fbfbfd; --ink: #1d1d1f; --muted: #6e6e73; --line: #d9d9de; --accent: #c4245b; --code: #f2f2f5; }
+  html, body { margin: 0; width: 100%; height: 100%; background: var(--bg); color: var(--ink); overflow: hidden;
+               font-family: -apple-system, system-ui, "Thonburi", "Noto Sans Thai", sans-serif; }
+  section { position: absolute; inset: 0; display: grid; place-items: center; }
+  .stage { width: 1500px; }
+  h1 { margin: 0; font-size: 220px; line-height: 1; letter-spacing: -0.04em; font-weight: 700; }
+  h2 { margin: 0; font-size: 104px; line-height: 1.08; letter-spacing: -0.03em; font-weight: 700; }
+  .sub { margin-top: 36px; font-size: 56px; color: var(--muted); }
+  .accent { color: var(--accent); }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .in { animation: rise .9s cubic-bezier(.2, .8, .2, 1) both; }
+  .d1 { animation-delay: .5s } .d2 { animation-delay: 1.3s } .d3 { animation-delay: 2.1s } .d4 { animation-delay: 2.9s }
+
+  .flow { display: flex; align-items: center; gap: 36px; margin-top: 80px; font-size: 54px; font-weight: 600; }
+  .flow .file { background: #fff; border: 2px solid var(--line); border-radius: 28px; padding: 30px 44px; }
+  .flow .file code { font-size: 46px; }
+  .flow .arrow { width: 90px; height: 3px; background: var(--line); }
+  .flow .out { color: var(--accent); }
+
+  .pair { margin-top: 70px; display: grid; gap: 10px; }
+  .pair .label { font-size: 34px; color: var(--muted); }
+  .pair .shown { font-size: 78px; font-weight: 600; }
+  .pair .spoken { font-size: 64px; color: var(--accent); }
+  .hold { margin-top: 70px; display: flex; gap: 14px; align-items: flex-end; height: 120px; }
+  .hold span { width: 120px; height: 100%; border-radius: 14px; background: var(--code); }
+  .hold span.frozen { background: var(--accent); opacity: .85; }
+
+  .cmd { margin-top: 70px; background: var(--code); border-radius: 24px; padding: 34px 44px; font-size: 44px; display: inline-block; }
+  .stat { margin-top: 50px; font-size: 52px; color: var(--muted); }
+  .stat b { color: var(--accent); font-size: 96px; letter-spacing: -0.03em; margin-right: 16px; }
+
+  /* clear of a web player's control bar, which sits over the bottom of the frame */
+  #caption { position: absolute; left: 160px; right: 160px; bottom: 150px; text-align: center;
+             font-size: 46px; line-height: 1.45; font-weight: 600; color: var(--ink); }
+  #caption:empty { display: none }
+  @keyframes rise { from { opacity: 0; transform: translateY(40px) } }
+  @keyframes grow { from { transform: scaleY(.15) } }
+</style>
+</head>
+<body>
+  <section data-scene="hello">
+    <div class="stage">
+      <h1 class="in" data-sfx="chime">Bloom</h1>
+      <p class="sub in d1">สคริปต์ไทยเข้า <span class="accent">วิดีโอเสร็จออก</span></p>
+    </div>
+  </section>
+
+  <section data-scene="build">
+    <div class="stage">
+      <h2 class="in">เขียนบท วาดฉาก<br>ที่เหลือบลูมทำให้</h2>
+      <div class="flow">
+        <span class="file in d1" data-sfx="pop"><code>script.md</code></span>
+        <span class="file in d2" data-sfx="pop"><code>scenes.html</code></span>
+        <span class="arrow in d3"></span>
+        <span class="out in d3" data-sfx="swish">เสียง · ภาพ · เพลง · MP4</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-scene="dub">
+    <div class="stage">
+      <h2 class="in">มีวิดีโออยู่แล้ว<br>ก็พากย์ได้</h2>
+      <div class="hold" aria-hidden="true">
+        <span class="in d1"></span><span class="in d1"></span><span class="frozen in d2" data-sfx="tick"></span>
+        <span class="frozen in d2"></span><span class="frozen in d2"></span><span class="in d3"></span><span class="in d3"></span>
+      </div>
+      <p class="sub in d3">ภาพหยุดรอ จนพูดจบทุกประโยค</p>
+    </div>
+  </section>
+
+  <section data-scene="voice">
+    <div class="stage">
+      <h2 class="in">เสียงของคุณ<br>อ่านแบบที่คุณอ่าน</h2>
+      <div class="pair">
+        <span class="label in d1">ซับไตเติลเขียนว่า</span>
+        <span class="shown in d1">ดู ภ.ง.ด.90 บรรทัดที่ 18</span>
+        <span class="label in d2">เสียงพูดว่า</span>
+        <span class="spoken in d2" data-sfx="pop">ดู ภองอดอเก้าสิบ บรรทัดที่ สิบแปด</span>
+      </div>
+    </div>
+  </section>
+
+  <section data-scene="gpu">
+    <div class="stage">
+      <h2 class="in">ยืมเครื่องที่แรงกว่า</h2>
+      <div class="cmd in d1" data-sfx="pop"><code>bloom dub video.mp4 --voice-on gpu-box</code></div>
+      <p class="stat in d2"><b>3.5 วินาที</b>ต่อประโยค บนการ์ดจอ RTX 3050 · 16 steps</p>
+    </div>
+  </section>
+
+  <section data-scene="end">
+    <div class="stage">
+      <h1 class="in">Bloom</h1>
+      <p class="sub in d1">โอเพนซอร์ส · <span class="accent">github.com/daisy-technology/blooms</span></p>
+    </div>
+  </section>
+
+  <div id="caption"></div>
+</body>
+</html>

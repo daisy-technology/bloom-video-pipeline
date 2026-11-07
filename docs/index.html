@@ -89,6 +89,9 @@
   .pair .label { font-size: 0.8125rem; color: var(--muted); letter-spacing: 0.01em; }
 
   section { padding: clamp(3.5rem, 9vw, 6.5rem) 0; }
+  .film { padding-top: 0; }
+  .film-title { font-size: clamp(1.4rem, 2.6vw, 1.75rem); letter-spacing: -0.015em; margin-bottom: 1.25rem; }
+  .film video { display: block; width: 100%; height: auto; border-radius: 18px; background: #000; box-shadow: 0 0 0 1px var(--line); }
   section + section { border-top: 1px solid var(--line); }
   .head { max-width: 42rem; }
   .head p { margin-top: 1rem; color: var(--muted); font-size: 1.125rem; }
@@ -177,6 +180,17 @@
       </div>
     </div>
   </header>
+
+  <section id="intro" class="film" aria-labelledby="intro-title">
+    <div class="wrap">
+      <h2 id="intro-title" class="film-title">33 seconds, made with Bloom.</h2>
+      <video controls playsinline preload="metadata" poster="media/bloom-intro.jpg" width="1920" height="1080">
+        <source src="media/bloom-intro.mp4" type="video/mp4">
+        <a href="media/bloom-intro.mp4">Download the intro (MP4, 1.8 MB)</a>
+      </video>
+      <p class="note">Thai narration with subtitles. Rendered from <a href="https://github.com/daisy-technology/blooms/tree/main/scripts/intro"><code>scripts/intro</code></a> with Bloom's designed voice.</p>
+    </div>
+  </section>
 
   <section id="ways">
     <div class="wrap">
