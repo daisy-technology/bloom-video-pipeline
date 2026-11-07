@@ -5,7 +5,9 @@
 Made for screen-recording exports with captions.srt and chapters.json next to the MP4, and works
 for any video with an .srt. Each caption is spoken when it appears. A line may run on into the next
 caption's time but never past its chapter; a chapter whose speech still doesn't fit is sped up a
-little (pitch kept), and past MAX_SPEEDUP the run warns that its captions need shortening. A chapter
+little (pitch kept), and past MAX_SPEEDUP the run warns that its captions need shortening.
+By default (hold) the voice keeps its own pace instead and the picture waits for it: the frame before a
+caption gives way is held until its line is done (`--no-hold` speeds the voice up as before). A chapter
 with no captions (a title card) speaks its title. The lexicons (bloom/lexicon.py: the global one plus
 --lexicon) turn what a caption shows into what the voice should say ("API" -> "เอพีไอ"); numbers follow
 thainum (baht and satang, codes digit by digit). Afterwards Whisper checks every line and
@@ -19,7 +21,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
+import subprocess
 import shlex
 import time
 from dataclasses import dataclass
@@ -30,6 +34,7 @@ from . import asr, lexicon, mix, review, sound, voice
 LEAD, GAP, TAIL = 0.15, 0.25, 0.35  # seconds: after a caption appears, between lines, before a chapter ends
 MAX_LAG = 1.0                       # a line may run this far into the next caption before it is spoken faster
 MAX_SPEEDUP = 1.35                  # faster than this sounds rushed: shorten the caption instead
+CUT_GUARD = 0.5                     # hold a chapter's end this far before the cut, clear of any fade-out
 
 
 @dataclass
@@ -97,6 +102,46 @@ def place(lines: list[Line], chapters: list[dict], total: float) -> list[str]:
     return warnings
 
 
+def hold(lines: list[Line], chapters: list[dict], total: float, fps: float) -> list[tuple[float, float]]:
+    """Every line at its own pace; the picture waits. When a line would still be speaking as its caption
+    gives way (or its chapter ends), the frame just before that moment is held, in whole frames, until the
+    line is done. Returns the holds as (source seconds, seconds held); line starts are in held-video time."""
+    holds, shift, t = [], 0.0, 0.0
+    for k, ch in enumerate(chapters):
+        mine = [ln for ln in lines if ln.chapter == k]
+        end = min(ch["end"], total)
+        for i, ln in enumerate(mine):
+            ln.tempo = 1.0
+            ln.start = max(ln.cue + shift + LEAD, t + GAP if t else 0.0)
+            t = ln.start + ln.dur
+            nxt = mine[i + 1] if i + 1 < len(mine) else None
+            at, room = (nxt.cue - 1 / fps, nxt.cue + LEAD - GAP) if nxt else (end - CUT_GUARD, end - TAIL)
+            late = math.ceil((t - room - shift) * fps - 1e-6) / fps
+            if late > 0:
+                holds.append((max(at, ln.cue), late))
+                shift += late
+    return holds
+
+
+def held(video: Path, holds: list[tuple[float, float]], fps: float, out: Path) -> Path:
+    """The picture with each hold inserted: one linear chain of single-frame loops (nothing buffered)."""
+    chain, added = [], 0
+    for at, secs in holds:
+        n = round(secs * fps)
+        chain.append(f"loop=loop={n}:size=1:start={round(at * fps) + added}")
+        added += n
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-an", "-vf", ",".join([*chain, "setpts=N/FRAME_RATE/TB"]),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(out)], check=True)
+    return out
+
+
+def _fps(video: Path) -> float:
+    r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate",
+                        "-of", "csv=p=0", str(video)], capture_output=True, text=True, check=True).stdout.strip()
+    a, _, b = r.partition("/")
+    return float(a) / float(b or 1)
+
+
 def _fit(ln: Line, take: int) -> float | None:
     """The length a line is voiced to. Take 0 with room to spare speaks at its own pace; any other take,
     and a line that must catch up, is voiced to its planned length. The timing is planned on take 0
@@ -108,7 +153,7 @@ def _fit(ln: Line, take: int) -> float | None:
 def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[Path] | None, spec: str | None,
         music: str, mood: str, sfx: bool, out: Path | None, dry_run: bool = False,
         retake: str | None = None, check: bool = True, flag_at: float = review.FLAG_AT,
-        audition: str | None = None, audition_takes: int = 4, use_take: str | None = None) -> Path | None:
+        audition: str | None = None, audition_takes: int = 4, use_take: str | None = None, hold_picture: bool = True) -> Path | None:
     total = voice.duration(video)
     cues = read_srt(srt)
     chapters = json.loads(Path(chapters_json).read_text(encoding="utf-8"))["chapters"] if chapters_json else \
@@ -126,7 +171,7 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
                      + (["--chapters", shlex.quote(str(chapters_json))] if chapters_json else [])
                      + [x for f in (lexicon_files or []) for x in ("--lexicon", shlex.quote(str(f)))]
                      + (["--voice", spec] if spec else []) + ["--music", shlex.quote(music), "--mood", mood]
-                     + ([] if sfx else ["--no-sfx"]) + ["--out", shlex.quote(str(out))])
+                     + ([] if sfx else ["--no-sfx"]) + ([] if hold_picture else ["--no-hold"]) + ["--out", shlex.quote(str(out))])
     if dry_run:  # what will be said, chapter by chapter, before spending minutes on synthesis
         for ln in lines:
             print(f"  {ln.chapter + 1:>2} {ln.cue:6.1f}s  {ln.spoken}")
@@ -141,7 +186,9 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
                                                            f"{voice.fmt_seconds(time.time() - t0)} so far", flush=True))
     for ln, wav in zip(lines, wavs):
         ln.wav, ln.dur = wav, voice.duration(wav)
-    for w in place(lines, chapters, total):
+    fps = _fps(video)
+    holds = hold(lines, chapters, total, fps) if hold_picture else []
+    for w in ([] if hold_picture else place(lines, chapters, total)):
         print(f"  ! {w}")
     if audition:  # takes of these lines voiced exactly as the video will use them, to pick by ear
         entries = []
@@ -168,6 +215,13 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
         for (_, ln), wav in zip(redo, wavs):
             ln.wav = wav
     clips = [(ln.wav, ln.start) for ln in lines]
+    picture = video
+    if holds:  # the picture waits for the voice: chapters, music and effects move with it
+        print(f"  holding the picture {len(holds)} times, {sum(s for _, s in holds):.1f} s in all…", flush=True)
+        picture = held(video, holds, fps, work / "picture.mp4")
+        later = lambda s: s + sum(d for at, d in holds if at < s)
+        chapters = [{**ch, "start": later(ch["start"]), "end": later(ch["end"])} for ch in chapters]
+        total += sum(s for _, s in holds)
 
     timeline = [{"start": ch["start"], "dur": ch["end"] - ch["start"], "mood": mood if k == 0 else None}
                 for k, ch in enumerate(chapters)]
@@ -175,7 +229,7 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
         (None if music == "none" else Path(music))
     fx = sound.write_wav(work / "sfx.wav", sound.place([{"sfx": "whoosh", "t": ch["start"] - 0.3}
                                                         for ch in chapters[1:]], total)) if sfx else None
-    mix.mux(video, mix.master(clips, total, work / "mix.wav", bed, fx), out)
+    mix.mux(picture, mix.master(clips, total, work / "mix.wav", bed, fx), out)
 
     rows = [{"n": n, "start": ln.start, "shown": ln.shown, "spoken": ln.spoken, "wav": ln.wav, "take": k,
              "heard": "", "score": 0.0, "flag": False} for n, (ln, k) in enumerate(zip(lines, line_takes), 1)]

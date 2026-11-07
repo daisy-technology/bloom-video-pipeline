@@ -183,7 +183,8 @@ def test_estimate():
 
 
 def test_dub_plan():
-    from bloom import dub
+    import subprocess
+    from bloom import dub, voice
 
     with tempfile.TemporaryDirectory() as d:
         srt = Path(d) / "c.srt"
@@ -222,6 +223,16 @@ def test_dub_plan():
         b.dur = 20.0  # hopeless: b is capped too, and the run warns to shorten chapter 2's captions
         warnings = dub.place(lines, chapters, 30.0)
         assert b.tempo == dub.MAX_SPEEDUP and warnings and "chapter 2" in warnings[0]
+        a.dur, b.dur = 6.2, 4.4  # hold (the default): natural pace, and the frame before b's caption waits for a
+        holds = dub.hold(lines, chapters, 30.0, 30.0)
+        assert all(ln.tempo == 1.0 for ln in lines) and len(holds) == 1
+        (at, secs), = holds
+        assert abs(at - (8.0 - 1 / 30)) < 1e-6 and abs(secs * 30 - round(secs * 30)) < 1e-6
+        assert a.start + a.dur + dub.GAP <= b.start + 1e-6 and abs(b.start - (b.cue + secs + dub.LEAD)) < 1e-6
+        src = Path(d) / "v.mp4"  # one second of picture, held for half a second in the middle
+        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=d=1:s=64x36:r=30", str(src)], check=True)
+        out = dub.held(src, [(0.5, 0.5)], 30.0, Path(d) / "h.mp4")
+        assert abs(voice.duration(out) - 1.5) < 0.05
         del os.environ["BLOOM_HOME"]
 
 
