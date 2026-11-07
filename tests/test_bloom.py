@@ -75,6 +75,10 @@ def test_thainum():
     assert spell("ยอด 69,650,222.16 บาท") == "ยอด หกสิบเก้าล้านหกแสนห้าหมื่นสองร้อยยี่สิบสองบาท สิบหกสตางค์"
     assert spell("รวม 1,250.00 บาท") == "รวม หนึ่งพันสองร้อยห้าสิบบาท"
     assert spell("ทร.03-07") == "ทร.ศูนย์สามศูนย์เจ็ด"  # a short code is one unit, no pause inside
+    assert spell("เลขที่ 012345678901") == "เลขที่ ศูนย์หนึ่งสองสาม สี่ห้าหกเจ็ด แปดเก้าศูนย์หนึ่ง"  # an ID, not 12 billion
+    assert spell("review.01") == "review.ศูนย์หนึ่ง" and spell("ถัง TK-101") == "ถัง TKหนึ่งศูนย์หนึ่ง"
+    assert spell("41.54%") == "สี่สิบเอ็ดจุดห้าสี่ เปอร์เซ็นต์" and spell("691.00 ลิตร") == "หกร้อยเก้าสิบเอ็ด ลิตร"
+    assert spell("วันที่ 18/09/2569") == "วันที่ สิบแปด กันยายน สองพันห้าร้อยหกสิบเก้า" and spell("1234/2569") == "หนึ่งสองสามสี่ สองห้าหกเก้า"
     assert spell("INV8-202609-000539") == "INVแปด สองศูนย์สองหกศูนย์เก้า ศูนย์ศูนย์ศูนย์ห้าสามเก้า"
     assert spell("9,361,589 ลิตร") == "เก้าล้านสามแสนหกหมื่นหนึ่งพันห้าร้อยแปดสิบเก้า ลิตร"
 
@@ -318,6 +322,7 @@ def test_lexicon():
             lexicon.add("เลขที่", "เลข ที่", project)
             assert lexicon.apply("แสดงเลขที่แบบ", lexicon.load(project)) == "แสดงเลข ที่แบบ"
             assert lexicon.apply("เปิด Wi-Fi (ใหม่) - ที่บ้าน", []) == "เปิด Wi-Fi ใหม่ ที่บ้าน"  # hyphen kept, dash dropped
+            assert lexicon.apply("ข้อ 2 - 9 ใน view v_oil_x", []) == "ข้อ สอง ถึง เก้า ใน view v oil x"  # a range; no underscores
             assert lexicon.remove("พาธ") and not lexicon.remove("พาธ")
             assert lexicon.load() == []
         finally:
