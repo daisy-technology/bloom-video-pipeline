@@ -393,6 +393,16 @@ def test_master():
         assert np.abs(y).max() <= 0.85  # limited below -1.4 dBFS
         # near the target; the safety limiter may take a little (here 1 dB: a burst on every syllable; 0.3 dB on a real dub)
         assert abs(mix._lufs(["ffmpeg", "-hide_banner", "-nostats", "-i", str(out)], [], "[0:a]") - mix.VOICE_LUFS) < 1.5
+        # it must not bend the voice: a fast compressor once put 2.4% distortion on loud syllables
+        tone = Path(d) / "tone.wav"
+        with wave.open(str(tone), "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(48000)
+            w.writeframes((0.3 * np.sin(2 * np.pi * 150 * np.arange(48000 * 3) / 48000) * 32767).astype("<i2").tobytes())
+        with wave.open(str(mix.master([(tone, 0.0)], 3.0, Path(d) / "t.wav"))) as w:
+            y = np.frombuffer(w.readframes(w.getnframes()), "<i2").reshape(-1, 2)[48000:96000, 0] / 32768
+        s = np.abs(np.fft.rfft(y * np.hanning(len(y))))
+        h = [s[k * 150 - 2:k * 150 + 3].max() for k in range(1, 12)]
+        assert np.sqrt(sum(x * x for x in h[1:])) / h[0] < 0.01  # under 1% THD
         with_bed = mix.master([(clip, 0.5)], 4.0, Path(d) / "b.wav", music=clip, sfx=clip)  # the build path: music and effects
         with wave.open(str(with_bed)) as w:
             assert np.abs(np.frombuffer(w.readframes(w.getnframes()), "<i2") / 32768).max() <= 0.85

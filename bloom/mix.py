@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 
-VOICE_LUFS = -16.0  # how loud the voice ends up
+VOICE_LUFS = -18.0  # how loud the voice ends up: 2 dB under -16 leaves its peaks room without squashing
 REF_LUFS = -23.0    # every voice is brought here first, so one compressor setting fits them all
 
 
@@ -22,12 +22,13 @@ def master(clips: list[tuple[Path, float]], total: float, out: Path,
            music: Path | None = None, sfx: Path | None = None) -> Path:
     """clips = [(wav, start_seconds)]. Writes a stereo 48 kHz WAV exactly `total` seconds long.
 
-    The voice is levelled the way a voice-over is mastered: measured, brought to REF_LUFS, compressed in
-    two gentle stages (syllable level, then sharp attacks), made up to VOICE_LUFS, and limited only for
-    what little is left. One loudnorm pass used to do all of this while riding the gain; OmniVoice's
-    peaks sit about 21 dB over its average loudness, so its limiter cut 11% of the speech, by up to
-    7 dB, and that was heard as crackle. On the same dub the limiter now touches 2.5%, by at most
-    3.6 dB. Music and effects then sit at the same distance under
+    The voice is levelled the way a voice-over is mastered: measured, brought to REF_LUFS, compressed
+    gently on its loud syllables (10 ms attack), made up to VOICE_LUFS, and limited only for what
+    little is left. Both ways this went wrong sounded like a broken microphone. One loudnorm pass rode
+    the gain, and with OmniVoice's peaks 21 dB over its average its limiter cut 11% of the speech by up
+    to 7 dB. A fast peak compressor (0.5 ms, 8:1) then fixed that but bent every loud wave (2.4%
+    distortion on a voice-pitch tone). Now: 0.4% distortion, and the limiter touches 1% of the speech.
+    Music and effects then sit at the same distance under
     the voice in every video: music (generated, or any file, looped) is levelled and ducked by the
     voice; effects play at their own level, undimmed.
     """
@@ -37,10 +38,9 @@ def master(clips: list[tuple[Path, float]], total: float, out: Path,
     graph.append("".join(f"[c{i}]" for i in range(n)) + f"amix=inputs={n}:normalize=0[raw]")
     probe = ["ffmpeg", "-hide_banner", "-nostats", *inputs]
     graph.append(f"[raw]volume={REF_LUFS - _lufs(probe, graph, '[raw]'):.2f}dB,"
-                 "acompressor=threshold=0.125:ratio=2.5:attack=10:release=150,"  # evens out loud and soft syllables
-                 "acompressor=threshold=0.2:ratio=8:attack=0.5:release=40:detection=peak[comp]")  # rounds off sharp attacks
+                 "acompressor=threshold=0.125:ratio=2.5:attack=10:release=150[comp]")  # evens out loud and soft syllables
     graph.append(f"[comp]volume={VOICE_LUFS - _lufs(probe, graph, '[comp]'):.2f}dB,"
-                 "alimiter=limit=0.79:attack=2:release=60:level=false[vo]")
+                 "alimiter=limit=0.79:attack=5:release=100:level=false[vo]")
     args = ["ffmpeg", "-v", "error", "-y", *inputs]
     layers = ["[vo]"]
     if music:
@@ -56,7 +56,7 @@ def master(clips: list[tuple[Path, float]], total: float, out: Path,
         args += ["-i", str(sfx)]
         layers.append(f"[{n}]")
     graph.append("".join(layers) + f"amix=inputs={len(layers)}:normalize=0,apad,atrim=0:{total:.3f},"
-                 "alimiter=limit=0.84:attack=2:release=60:level=false,aformat=channel_layouts=stereo[a]")
+                 "alimiter=limit=0.84:attack=5:release=100:level=false,aformat=channel_layouts=stereo[a]")
     args += ["-filter_complex", ";".join(graph), "-map", "[a]", "-ar", "48000", str(out)]
     subprocess.run(args, check=True)
     return out
