@@ -3,18 +3,31 @@ from __future__ import annotations
 
 import argparse
 import shlex
+import sys
 import time
 from pathlib import Path
 
-from . import asr, clone, dub, lexicon, mix, render, review, script, sound, subs, voice
+from . import asr, batch, clone, dub, lexicon, mix, remote, render, review, script, sound, subs, voice
 
 PAD_IN, PAD_OUT = 0.35, 0.55  # breathing room around each scene's voice, seconds
 WHOOSH_LEAD = 0.3             # the transition whoosh starts this early, so it peaks on the cut
 
 
+def rerun(project: Path, out_dir: Path, spec: str | None, music: str, sfx: bool, size: tuple[int, int], fps: int) -> str:
+    """This build's command line. The review page adds --retake to it."""
+    return " ".join([review.cli(), "build", shlex.quote(str(project)), "--out", shlex.quote(str(out_dir))]
+                    + (["--voice", spec] if spec else []) + ["--music", shlex.quote(music)]
+                    + ([] if sfx else ["--no-sfx"]) + ["--size", f"{size[0]}x{size[1]}", "--fps", str(fps)])
+
+
+def size(text: str) -> tuple[int, int]:
+    w, h = (int(x) for x in text.lower().split("x"))
+    return w, h
+
+
 def build(project: Path, out_dir: Path, spec: str | None, music: str, sfx: bool, size: tuple[int, int], fps: int,
           workers: int | None = None, retake: str | None = None, check: bool = True,
-          flag_at: float = review.FLAG_AT) -> Path:
+          flag_at: float = review.FLAG_AT, voice_only: bool = False, again: str | None = None) -> Path | None:
     scenes = script.parse(project / "script.md")
     html = project / "scenes.html"
     if not html.exists():
@@ -39,6 +52,9 @@ def build(project: Path, out_dir: Path, spec: str | None, music: str, sfx: bool,
     wavs = voice.synth_many([s["speech"] for s in scenes], work / "voice", spec, takes=scene_takes,
                             progress=lambda done, n: print(f"  voice {done}/{n} lines, "
                                                            f"{voice.fmt_seconds(time.time() - t0)} so far", flush=True))
+    if voice_only:  # every clip is made: a later run renders and mixes without the GPU
+        print(f"  voice ready in {voice.fmt_seconds(time.time() - t0)}", flush=True)
+        return None
     timeline, clips, cues, start = [], [], [], 0.0
     for s, wav in zip(scenes, wavs):
         speak = voice.duration(wav)
@@ -73,10 +89,7 @@ def build(project: Path, out_dir: Path, spec: str | None, music: str, sfx: bool,
         rows = [{"n": n, "id": s["id"], "start": tl["start"] + PAD_IN, "shown": s["text"], "spoken": s["speech"],
                  "wav": wav} for n, (s, tl, wav) in enumerate(zip(scenes, timeline, wavs), 1)]
         review.check(rows, work / "heard.json", flag_at)
-        bloom = f"uv run --project {shlex.quote(str(Path(__file__).resolve().parent.parent))} bloom"
-        again = " ".join([bloom, "build", shlex.quote(str(project)), "--out", shlex.quote(str(out_dir))]
-                         + (["--voice", spec] if spec else []) + ["--music", shlex.quote(music)]
-                         + ([] if sfx else ["--no-sfx"]) + ["--size", f"{size[0]}x{size[1]}", "--fps", str(fps)])
+        again = again or rerun(project, out_dir, spec, music, sfx, size, fps)
         page = review.page(rows, out_dir / f"{name}.review.html", mp4, name, "%s:%s" % voice.resolve(spec),
                            again.replace("{", "{{").replace("}", "}}") + " --retake {id}")
         review.summary(rows, page)
@@ -84,7 +97,7 @@ def build(project: Path, out_dir: Path, spec: str | None, music: str, sfx: bool,
     return mp4
 
 
-def main() -> None:
+def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="bloom", description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -93,6 +106,12 @@ def main() -> None:
         p.add_argument("--flag-at", type=float, default=review.FLAG_AT,
                        help=f"flag lines whose Whisper error rate is above this (default {review.FLAG_AT})")
         p.add_argument("--no-check", dest="check", action="store_false", help="skip the Whisper check and review page")
+
+    def elsewhere(p: argparse.ArgumentParser) -> None:
+        g = p.add_mutually_exclusive_group()
+        g.add_argument("--on", metavar="NAME", help="run all of it on another computer (bloom remote add); the results come back here")
+        g.add_argument("--voice-on", metavar="NAME", help="make the voice on another computer, then finish here")
+        p.add_argument("--again", help=argparse.SUPPRESS)  # a remote run's pages show the command to run here
 
     b = sub.add_parser("build", help="render a project folder (script.md + scenes.html)")
     b.add_argument("project", type=Path)
@@ -105,7 +124,10 @@ def main() -> None:
     b.add_argument("--size", default="1080x1920", help="WxH, default 1080x1920 (vertical short)")
     b.add_argument("--fps", type=int, default=30)
     b.add_argument("--workers", type=int, help="parallel render workers (default: BLOOM_RENDER_WORKERS, else 3 on 7+ cores)")
+    b.add_argument("--voice-only", action="store_true",
+                   help="make every scene's clip and stop; a later run renders and mixes without the GPU")
     checking(b, "scene ids")
+    elsewhere(b)
 
     d = sub.add_parser("dub", help="voice a video that already has captions (an .srt, plus chapters.json when there is one)")
     d.add_argument("video", type=Path)
@@ -128,6 +150,29 @@ def main() -> None:
                    help="leave the picture as it is and speed late lines up (to 1.35x) instead of holding the frame until they finish")
     d.add_argument("--voice-only", action="store_true",
                    help="make every line's clip and stop; a later run finishes picture, mix and check without the GPU")
+    elsewhere(d)
+
+    bt = sub.add_parser("batch", help="dub several videos, voicing the next one while the last one finishes")
+    bt.add_argument("file", type=Path, help="one video per line: the arguments of bloom dub, paths relative to the file (# comments)")
+    g = bt.add_mutually_exclusive_group()
+    g.add_argument("--on", metavar="NAME", help="voice and finish them on another computer")
+    g.add_argument("--voice-on", metavar="NAME", help="voice them on another computer and finish them here")
+
+    rm = sub.add_parser("remote", help="another computer for the heavy work, used with --on / --voice-on NAME")
+    rms = rm.add_subparsers(dest="action", required=True)
+    ra = rms.add_parser("add", help="remember a computer you can ssh into with a key, then check it")
+    ra.add_argument("name")
+    ra.add_argument("ssh", help="user@host, or a Host from ~/.ssh/config")
+    ra.add_argument("--python", required=True,
+                    help="the Python of Bloom's environment there, e.g. C:/Users/me/bloom/.venv/Scripts/python.exe")
+    ra.add_argument("--identity", help="the ssh key, when ssh doesn't find it by itself")
+    ra.add_argument("--path", action="append", default=[], help="a folder to put first on PATH there (ffmpeg, whisper-cli); repeat for several")
+    ra.add_argument("--root", help="where jobs live there, under the home folder (default bloom-jobs/<your user name>)")
+    rms.add_parser("list", help="the computers added so far")
+    rr = rms.add_parser("remove", help="forget a computer (its files there stay)")
+    rr.add_argument("name")
+    rc = rms.add_parser("check", help="what a computer has and lacks for Bloom")
+    rc.add_argument("name")
 
     lx = sub.add_parser("lexicon", help="how the voice says words, remembered for every video")
     lxs = lx.add_subparsers(dest="action", required=True)
@@ -169,11 +214,35 @@ def main() -> None:
     t.add_argument("--no-play", dest="play", action="store_false")
     vs.add_parser("list", help="list voice profiles")
     vs.add_parser("devices", help="list the microphones you can record from")
+    return ap
 
-    a = ap.parse_args()
+
+def main(argv: list[str] | None = None) -> None:
+    try:
+        _main(sys.argv[1:] if argv is None else argv)
+    except KeyboardInterrupt:
+        raise SystemExit(130)  # Ctrl-C: stopped here, and there too when it ran on another computer
+
+
+def _main(argv: list[str]) -> None:
+    a = parser().parse_args(argv)
+    if a.cmd in ("dub", "build") and (a.on or a.voice_on) and not getattr(a, "dry_run", False):
+        remote.offload(a, argv)
+        return
     if a.cmd == "dub":
         dub.dub(a.video, a.srt, a.chapters, a.lexicon, a.voice, a.music, a.mood, a.sfx, a.out, a.dry_run,
-                a.retake, a.check, a.flag_at, a.audition, a.takes_per, a.use_take, a.hold, a.voice_only)
+                a.retake, a.check, a.flag_at, a.audition, a.takes_per, a.use_take, a.hold, a.voice_only, a.again)
+        return
+    if a.cmd == "batch":
+        raise SystemExit(batch.batch(a.file, a.on, a.voice_on))
+    if a.cmd == "remote":
+        if a.action == "add":
+            remote.add(a.name, a.ssh, a.python, a.identity, a.path, a.root)
+        if a.action in ("add", "check"):
+            raise SystemExit(0 if remote.check(a.name) else 1)
+        if a.action == "remove":
+            raise SystemExit(0 if remote.remove(a.name) else f"bloom remote: no remote {a.name!r}")
+        remote.listing()
         return
     if a.cmd == "lexicon":
         if a.action == "add":
@@ -201,8 +270,8 @@ def main() -> None:
         except (FileNotFoundError, ValueError) as e:
             raise SystemExit(f"bloom voice: {e}")
         raise SystemExit(0 if ok is not False else 1)
-    w, h = (int(x) for x in a.size.lower().split("x"))
-    build(a.project, a.out, a.voice, a.music, a.sfx, (w, h), a.fps, a.workers, a.retake, a.check, a.flag_at)
+    build(a.project, a.out, a.voice, a.music, a.sfx, size(a.size), a.fps, a.workers, a.retake, a.check, a.flag_at,
+          a.voice_only, a.again)
 
 
 if __name__ == "__main__":

@@ -95,7 +95,7 @@ What makes a good clone:
 - The transcript must match the audio word for word, or the voice slurs.
 - Record two or three takes and keep the one that `test` scores and sounds best.
 
-Profiles live in `~/.bloom/voices/<name>/` (`ref.wav`, `ref.txt`), outside every repo, because a voice is personal data. Re-recording a profile re-voices the next build automatically. OmniVoice clones on your machine, so the recording never leaves it. Its model weights are non-commercial, so use ElevenLabs voice cloning on a paid plan for client work.
+Profiles live in `~/.bloom/voices/<name>/` (`ref.wav`, `ref.txt`), outside every repo, because a voice is personal data. Re-recording a profile re-voices the next build automatically. OmniVoice clones on your machine, so the recording stays on your own computers: it only goes to another one when you run a job there with `--on` or `--voice-on` (see Another computer for the heavy work). Its model weights are non-commercial, so use ElevenLabs voice cloning on a paid plan for client work.
 
 ### Voice a video that already has captions
 
@@ -156,6 +156,39 @@ Measured on an Apple M1 (16 GB), 7 Nov 2026:
 - **Batching doesn't help on an M1.** Two, four and eight lines per GPU pass ran at 0.98×, 0.85× and 0.72× the speed of single lines, because the GPU is already full with one. Set `BLOOM_OV_BATCH` on CUDA cards, where batching pays.
 - **Picture.** Rendering uses 3 workers by default (`--workers`, `BLOOM_RENDER_WORKERS`). A 53 s video renders in 35 s instead of 66 s, and comes out visually identical (PSNR 56 dB).
 - **When speed matters more than polish**, use `BLOOM_OV_STEPS=16` (about twice as fast) or a shorter reference recording. Running two voice jobs at once doesn't help: there's one GPU, and both slow down.
+- **On an NVIDIA card.** An RTX 3050 laptop GPU (4 GB) voiced a line in about 3.5 s at `BLOOM_OV_STEPS=16`, with nothing else on the card (7 Nov 2026). A browser holding part of its memory pushed that to 9.3 s, because the model spilled into system memory. Bloom now turns on PyTorch's expandable segments unless `PYTORCH_CUDA_ALLOC_CONF` says otherwise. That cuts the model's peak from 2.32 to 2.14 GB, and with the browser open it brought the time to about 6 s. To run Bloom on such a card from a Mac, see Another computer for the heavy work.
+
+## Another computer for the heavy work
+
+When another computer has the GPU or more cores, Bloom can run the voice, or the whole job, there over SSH and bring the results back.
+
+```sh
+uv run bloom remote add gpu-box me@10.0.0.5 --python C:/Users/me/bloom/.venv/Scripts/python.exe --path C:/Users/me/tools/bin
+uv run bloom dub export.mp4 --srt captions.srt --voice omnivoice:@me --voice-on gpu-box   # the voice there, the rest here
+uv run bloom dub export.mp4 --srt captions.srt --voice omnivoice:@me --on gpu-box         # all of it there
+uv run bloom build scripts/hello --on gpu-box
+uv run bloom batch videos.txt --voice-on gpu-box     # several videos, the next one voiced while the last one finishes
+```
+
+`--voice-on` makes the voice clips there and finishes here: picture, mix and Whisper check. Pick it when this computer is quick at the rest, like a Mac that encodes video in hardware next to a laptop with an NVIDIA card. `--on` runs everything there and copies back the video, its review page and the clips the page plays. Either way the review page shows the command to run here, with the flag included.
+
+`bloom batch FILE` takes one video per line: the arguments of `bloom dub`, with paths relative to the file and `#` for comments. One process voices the videos in turn, so the model loads once, and each video is finished as soon as its voice is ready, so the GPU and the CPU work at the same time. It works on one computer too, without either flag.
+
+**Setting up the other computer, once:**
+
+1. An SSH server with a key login. On Windows: Settings > System > Optional features > OpenSSH Server, then start the `sshd` service. Your public key goes in `C:\Users\<you>\.ssh\authorized_keys`, or in `C:\ProgramData\ssh\administrators_authorized_keys` for an administrator account. Connect once with plain `ssh` to accept its host key.
+2. Bloom and its environment: clone this repo there and run `uv sync`. On an NVIDIA card, install torch's CUDA build into that environment; pytorch.org shows the command for your card.
+3. ffmpeg, and whisper.cpp for the check. Folders that aren't on the PATH of SSH sessions go in `--path`.
+4. `bloom remote add NAME user@host --python <the python of that environment>`, plus `--identity <key>` when ssh doesn't find the key itself. It ends with `bloom remote check NAME`, which lists what is missing there and how to fix it.
+
+**What goes where.** Each run sends Bloom's own code (so both sides always run the same Bloom), the job's files, your voice profile, your global lexicon and your voice prompts to `bloom-jobs/<your user>/` in the home folder there. Each file lies at its absolute path from here, with `C:` becoming `C/`, so the links in review pages still work when the pages come back. Only changed files are sent again, and the clips stay there for the next run. That folder holds a copy of your voice recording, so delete it when you stop using that computer. File names have to be valid there: Windows doesn't allow `" : * ? < > |`.
+
+**Good to know:**
+
+- A clip is named from its text, voice and settings, never from a computer or folder. For the same output, `--voice-on`, `--on` and a plain run share clips, so a `--retake` here voices only that line again. A clip that is already here stays: one made there under the same name never replaces it.
+- Ctrl-C stops the job there too, with everything it started. A dropped connection doesn't: Windows keeps the job running to its end, which on a small GPU leaves the next job short of memory. Run `bloom remote check NAME` before starting again.
+- Run one job per computer at a time. `bloom batch` already pairs its voicing with its finishing.
+- `bloom remote check` warns when other programs hold the GPU's memory there. A browser left open on a 4 GB laptop made its voice nearly twice as slow (see Speed).
 
 ## Music and sound effects
 
@@ -169,7 +202,7 @@ Every video gets a score and sound effects by default. Both are synthesized, so 
 ## Layout
 
 ```
-bloom/       the pipeline: script.py · voice.py · clone.py · lexicon.py · review.py · asr.py · thainum.py · subs.py · render.py · sound.py · foley.py · dub.py · mix.py · __main__.py
+bloom/       the pipeline: script.py · voice.py · clone.py · lexicon.py · review.py · asr.py · thainum.py · subs.py · render.py · sound.py · foley.py · dub.py · mix.py · remote.py · batch.py · __main__.py
 scripts/     projects: <name>/script.md + <name>/scenes.html
 assets/      source videos, music, screenshots
 output/      rendered videos (gitignored)

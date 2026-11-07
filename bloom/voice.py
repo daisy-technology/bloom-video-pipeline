@@ -79,13 +79,20 @@ def resolve(spec: str | None) -> tuple[str, str]:
     return provider, variant or default
 
 
-def _settings(provider: str, variant: str) -> str:
+@functools.lru_cache(maxsize=8)
+def _digest(path: str, size: int, mtime: float) -> str:
+    return hashlib.sha1(Path(path).read_bytes()).hexdigest()[:16]
+
+
+def _settings(provider: str, variant: str, legacy: bool = False) -> str:
     """Everything besides the text that changes the audio; part of the cache key."""
     if provider == "omnivoice":
         ref_id = ANCHOR_TEXT
         if variant.startswith("@"):  # a re-recorded profile changes the key, so it re-voices
             ref, text = profile(variant[1:])
-            ref_id = f"{ref}:{ref.stat().st_size}:{ref.stat().st_mtime}|{text}"
+            st = ref.stat()
+            # the recording's bytes, not where it lies: a clip made on another computer has the same name
+            ref_id = (f"{ref}:{st.st_size}:{st.st_mtime}" if legacy else _digest(str(ref), st.st_size, st.st_mtime)) + f"|{text}"
         return f"{variant}|{ref_id}||{_env('BLOOM_OV_STEPS', '32')}|{_env('BLOOM_OV_SPEED')}"
     if provider == "elevenlabs":
         return f"{variant}|{_env('ELEVENLABS_VOICE_ID', '21m00Tcm4TlvDq8ikWAM')}"
@@ -98,8 +105,14 @@ def _clip(text: str, cache: Path, spec: str | None, fit: float | None, take: int
         text = thainum.spell(text)  # say and ElevenLabs read digits themselves; OmniVoice garbles them
     fitted = f"|{fit:.3f}s" if fit else ""
     retake = f"|take{take}" if take else ""  # take 0 keeps the key every earlier cache was made with
-    key = hashlib.sha1(f"{provider}|{_settings(provider, variant)}|{text}{fitted}{retake}".encode()).hexdigest()[:16]
-    return provider, variant, text, Path(cache) / f"{provider}-{key}.wav"
+    clip = lambda settings: Path(cache) / (  # noqa: E731
+        f"{provider}-{hashlib.sha1(f'{provider}|{settings}|{text}{fitted}{retake}'.encode()).hexdigest()[:16]}.wav")
+    path = clip(_settings(provider, variant))
+    if provider == "omnivoice" and variant.startswith("@") and not path.exists():
+        # keyed by the profile's path until Nov 2026: renamed once instead of voiced again (drop in a while)
+        if (old := clip(_settings(provider, variant, legacy=True))).exists():
+            old.rename(path)
+    return provider, variant, text, path
 
 
 def cached(text: str, cache: Path, spec: str | None = None, fit: float | None = None, take: int = 0) -> bool:
@@ -239,6 +252,10 @@ def _ov_model():
 
     logging.getLogger("torch.distributed.elastic.multiprocessing.redirects").disabled = True
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    # read when CUDA first allocates, which is below. The model's peak drops from 2.32 to 2.14 GB: on a 4 GB card
+    # that something else shares (a browser), the default spilled into system memory, 9.3 s a line against
+    # about 6 (RTX 3050, Nov 2026). The same speed when the card is free; no effect off CUDA
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     import torch
     import transformers
 

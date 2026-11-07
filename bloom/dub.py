@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
 import subprocess
 import shlex
@@ -164,6 +165,31 @@ def _fps(video: Path) -> float:
     return float(a) / float(b or 1)
 
 
+def paths(video: Path, out: Path | None) -> tuple[Path, Path]:
+    """The output video, and the work dir that keeps its clips. The work dir is named from where the video
+    lies relative to the output, so a computer that mirrors the folders (bloom/remote.py) names it the same."""
+    out = out or video.with_name(f"{video.stem}-voice.mp4")
+    try:
+        where = Path(os.path.relpath(video.resolve(), out.parent.resolve())).as_posix()
+    except ValueError:  # on another drive (Windows)
+        where = str(video.resolve())
+    work = out.parent / ".bloom" / hashlib.sha1(where.encode()).hexdigest()[:10]
+    old = out.parent / ".bloom" / hashlib.sha1(str(video.resolve()).encode()).hexdigest()[:10]
+    if not work.exists() and old.exists():  # named from the absolute path until Nov 2026: renamed once (drop in a while)
+        old.rename(work)
+    return out, work
+
+
+def rerun(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[Path] | None, spec: str | None,
+          music: str, mood: str, sfx: bool, hold_picture: bool, out: Path) -> str:
+    """This dub's command line. The review and audition pages add --retake / --use-take to it."""
+    return " ".join([review.cli(), "dub", shlex.quote(str(video)), "--srt", shlex.quote(str(srt))]
+                    + (["--chapters", shlex.quote(str(chapters_json))] if chapters_json else [])
+                    + [x for f in (lexicon_files or []) for x in ("--lexicon", shlex.quote(str(f)))]
+                    + (["--voice", spec] if spec else []) + ["--music", shlex.quote(music), "--mood", mood]
+                    + ([] if sfx else ["--no-sfx"]) + ([] if hold_picture else ["--no-hold"]) + ["--out", shlex.quote(str(out))])
+
+
 def _fit(ln: Line, take: int) -> float | None:
     """The length a line is voiced to. Take 0 with room to spare speaks at its own pace; any other take,
     and a line that must catch up, is voiced to its planned length. The timing is planned on take 0
@@ -176,25 +202,19 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
         music: str, mood: str, sfx: bool, out: Path | None, dry_run: bool = False,
         retake: str | None = None, check: bool = True, flag_at: float = review.FLAG_AT,
         audition: str | None = None, audition_takes: int = 4, use_take: str | None = None, hold_picture: bool = True,
-        voice_only: bool = False) -> Path | None:
+        voice_only: bool = False, again: str | None = None) -> Path | None:
     total = voice.duration(video)
     cues = read_srt(srt)
     chapters = json.loads(Path(chapters_json).read_text(encoding="utf-8"))["chapters"] if chapters_json else \
         [{"start": 0.0, "end": total, "title": ""}]
     lines = plan(cues, chapters, lexicon.load(*(lexicon_files or [])))
-    out = out or video.with_name(f"{video.stem}-voice.mp4")
+    out, work = paths(video, out)
     takes = review.update_takes(out.with_suffix(".takes.json"), retake, use_take)
     line_takes = [takes.get(str(n), 0) for n in range(1, len(lines) + 1)]
-    work = out.parent / ".bloom" / hashlib.sha1(str(video.resolve()).encode()).hexdigest()[:10]
     work.mkdir(parents=True, exist_ok=True)
     (work.parent / ".gitignore").write_text("*\n")
 
-    bloom = f"uv run --project {shlex.quote(str(Path(__file__).resolve().parent.parent))} bloom"
-    again = " ".join([bloom, "dub", shlex.quote(str(video)), "--srt", shlex.quote(str(srt))]
-                     + (["--chapters", shlex.quote(str(chapters_json))] if chapters_json else [])
-                     + [x for f in (lexicon_files or []) for x in ("--lexicon", shlex.quote(str(f)))]
-                     + (["--voice", spec] if spec else []) + ["--music", shlex.quote(music), "--mood", mood]
-                     + ([] if sfx else ["--no-sfx"]) + ([] if hold_picture else ["--no-hold"]) + ["--out", shlex.quote(str(out))])
+    again = again or rerun(video, srt, chapters_json, lexicon_files, spec, music, mood, sfx, hold_picture, out)
     if dry_run:  # what will be said, chapter by chapter, before spending minutes on synthesis
         for ln in lines:
             print(f"  {ln.chapter + 1:>2} {ln.cue:6.1f}s  {ln.spoken}")
