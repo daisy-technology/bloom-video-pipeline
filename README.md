@@ -2,11 +2,13 @@
 
 Turn a Thai voiceover script into a finished, animated short video. Part of the Daisy Technology family.
 
-You write two files: the narration (`script.md`) and the visuals as an animated web page (`scenes.html`). `bloom build` voices each scene, lays the clips on a timeline, writes subtitles, renders the page frame by frame in a headless browser and muxes it all into an MP4.
+You write two files: the narration (`script.md`) and the visuals as an animated web page (`scenes.html`). `bloom build` voices each scene, lays the clips on a timeline, writes subtitles, renders the page frame by frame in a headless browser, scores it with generated music and sound effects, and muxes it all into an MP4.
 
 ```
-script.md ─► voice (OmniVoice / ElevenLabs / say) ─► mix (timeline, ducking, loudnorm) ─► subtitles (.srt)
-scenes.html ─────────────────────────────────────────────────────────► render (Playwright → ffmpeg) ─► output/<name>.mp4
+script.md ──► voice (OmniVoice / ElevenLabs / say) ──► timeline ──► subtitles (.srt)
+scenes.html ─► render (Playwright → ffmpeg, picture only) ─┬─► sound-effect cues
+                                                            ▼
+             music (generated per scene mood) + voice + effects ─► mix (ducking, loudnorm) ─► output/<name>.mp4
 ```
 
 Each scene lasts exactly as long as its voice clip plus a short pause, so picture and narration stay in sync without timing anything by hand.
@@ -31,7 +33,7 @@ uv run bloom build scripts/hello
 open output/hello.mp4
 ```
 
-Options: `--voice <provider>[:<variant>]` (see Voices), `--bed music.mp3` (ducked under the voice), `--size 1920x1080` (default is 1080x1920, vertical), `--fps 30`, `--out <folder>`.
+Options: `--voice <provider>[:<variant>]` (see Voices), `--music auto|none|<file>` (see Music and sound effects), `--no-sfx`, `--size 1920x1080` (default is 1080x1920, vertical), `--fps 30`, `--out <folder>`.
 
 A project is any folder with these two files, so it can live outside this repo.
 
@@ -41,11 +43,11 @@ A project is any folder with these two files, so it can live outside this repo.
 ## intro
 สวัสดีครับ นี่คือบลูม
 
-## flow +1.5
+## flow +1.5 ~bright
 ดู {ภ.ง.ด.90|ภองอดอเก้าสิบ} บรรทัดที่ {18|สิบแปด}
 ```
 
-`+1.5` after a scene id holds that scene 1.5 seconds past the end of its voice, which is useful for a closing frame. Thai spelling puts spaces around ๆ and numbers; captions treat those as glue, never as line breaks. To glue anything else, use a no-break space.
+`+1.5` after a scene id holds that scene 1.5 seconds past the end of its voice, which is useful for a closing frame. `~calm`, `~tense` or `~bright` sets the music's mood from that scene on. Thai spelling puts spaces around ๆ and numbers; captions treat those as glue, never as line breaks. To glue anything else, use a no-break space.
 
 **`scenes.html`**: an ordinary page.
 
@@ -54,6 +56,7 @@ A project is any folder with these two files, so it can live outside this repo.
 - The shown section gets a `--scene-dur` CSS variable (for example `8.4s`). Time things as a fraction of it, `animation-delay: calc(var(--scene-dur) * .4)`, and the motion follows the narration whichever voice reads it.
 - An element with `id="caption"` gets the current subtitle line written into it. Leave it out if you don't want burned-in captions.
 - For canvas or JS-driven motion, define `window.bloomSeek(sceneId, seconds)`. It is called before every frame.
+- Put `data-sfx="<effect>"` on an animated element and that effect plays the moment its animation starts: `tick`, `pop`, `swish`, `whoosh`, `thud`, `chime`, `buzz`, or `type` (one key click per step of a `steps(n)` typing animation; set `--n` on the element).
 
 The renderer pauses every animation and seeks it to each frame's time before taking the screenshot, so a render always comes out the same no matter how fast the machine is.
 
@@ -63,17 +66,61 @@ Pick one with `--voice <provider>[:<variant>]` or `BLOOM_VOICE`. Without either,
 
 | `--voice` | What it is | Settings |
 |---|---|---|
-| `omnivoice[:<instruct>]` (default) | [k2-fsa/OmniVoice](https://github.com/k2-fsa/OmniVoice), runs on your machine (Apple Silicon, CUDA or CPU), free | `BLOOM_OV_INSTRUCT` (default `female`), `BLOOM_OV_REF` + `BLOOM_OV_REF_TEXT`, `BLOOM_OV_STEPS` (32; 16 is twice as fast), `BLOOM_OV_SPEED`, `BLOOM_OV_SEED` |
+| `omnivoice:@<name>` | your own voice, cloned from a profile (see below) | `bloom voice record <name>` |
+| `omnivoice[:<instruct>]` (default) | [k2-fsa/OmniVoice](https://github.com/k2-fsa/OmniVoice), runs on your machine (Apple Silicon, CUDA or CPU), free | `BLOOM_OV_INSTRUCT` (default `male`; `female` and other attributes work too), `BLOOM_OV_STEPS` (32; 16 is twice as fast), `BLOOM_OV_SPEED`, `BLOOM_OV_SEED` |
 | `elevenlabs[:<model_id>]` | ElevenLabs API, needs `ELEVENLABS_API_KEY` | `ELEVENLABS_VOICE_ID`, model defaults to `eleven_v3`, the one that lists Thai |
 | `say[:<voice>]` | macOS built-in, offline | voice defaults to `Kanya`, `BLOOM_SAY_RATE` (175) |
 
 **OmniVoice's model weights are CC-BY-NC: non-commercial use only.** Use ElevenLabs (on a plan that allows it) for commercial videos.
 
-OmniVoice's design-a-voice mode (`instruct`) picks a new voice on every call, and Bloom voices each scene separately. So Bloom designs one reference clip per instruct (cached) and clones it for every scene. The voice then stays the same from scene to scene, and cloning is OmniVoice's most stable mode. For the best Thai, record 5–10 seconds of your own voice and point `BLOOM_OV_REF` at it, with the exact words in `BLOOM_OV_REF_TEXT`. OmniVoice doesn't read digits by default, so spell numbers out with `{18|สิบแปด}`.
+OmniVoice's design-a-voice mode (`instruct`) picks a new voice on every call, and Bloom voices each scene separately. So Bloom designs one reference clip per instruct (cached) and clones it for every scene. The voice then stays the same from scene to scene, and cloning is OmniVoice's most stable mode. OmniVoice garbles digits, so Bloom spells them out in Thai before it reads them (1,250 → หนึ่งพันสองร้อยห้าสิบ, 22.19 → ยี่สิบสองจุดหนึ่งเก้า). Codes and dates that shouldn't be read as amounts go in `{shown|spoken}`.
 
 ElevenLabs free plan: sign in, create a key under Settings → API Keys, and put `export ELEVENLABS_API_KEY=…` in `~/.zshenv`. The free plan includes API access and a monthly credit allowance, and requires attribution.
 
 Clips are cached in `<project>/.bloom/voice/`, keyed by provider, settings and text. Re-rendering after changing only the animation doesn't synthesize or bill anything again. The cache folder ignores itself in git.
+
+### Your own voice
+
+```sh
+uv run bloom voice record me        # shows a ~15 s passage, counts down, records it from the mic
+uv run bloom voice test me          # says a test line in your cloned voice and plays it
+uv run bloom build scripts/hello --voice omnivoice:@me     # or put BLOOM_VOICE=omnivoice:@me in ~/.zshenv
+```
+
+`record` trims the silence and checks the take: 10–17 s long (the passage covers Thai's clusters, ร/ล, all five tones and the เอีย/เอือ vowels), loudest peak near -6 dBFS and never clipping, a quiet room, few pauses, and (with whisper.cpp installed) that the words match the transcript it saves. Each failed check says what to change. `bloom voice add me take.wav --text "…"` uses a recording made with QuickTime or a phone, `check` re-runs the checks, and `list` shows your profiles.
+
+What makes a good clone:
+- Read the way you want the videos to sound. Cloning copies pace and energy, not just the timbre.
+- Plain Thai, no English words or numbers. The default sentence has no ครับ/ค่ะ, so it suits any speaker. If you add your particle, edit `ref.txt` to match.
+- The transcript must match the audio word for word, or the voice slurs.
+- Record two or three takes and keep the one that `test` scores and sounds best.
+
+Profiles live in `~/.bloom/voices/<name>/` (`ref.wav`, `ref.txt`), outside every repo, because a voice is personal data. Re-recording a profile re-voices the next build automatically. OmniVoice clones on your machine, so the recording never leaves it. Its model weights are non-commercial, so use ElevenLabs voice cloning on a paid plan for client work.
+
+### Voice a video that already has captions
+
+```sh
+uv run bloom dub "export.mp4" --srt captions.srt --chapters chapters.json --lexicon words.tsv --voice omnivoice:@me
+uv run bloom dub "export.mp4" --srt captions.srt --dry-run      # print what will be said, synthesize nothing
+```
+
+Made for screen-recording exports that come with `captions.srt` and `chapters.json` next to the MP4, and works for any video with an `.srt`. Each caption is spoken when it appears. A line may run on into the next caption's time but never past its chapter; a chapter that still doesn't fit is sped up a little (pitch kept), and beyond 1.35× the run tells you which chapter's captions to shorten. A chapter with no captions, like a title card, speaks its title. The lexicon is a TSV of `shown<TAB>spoken` pairs for what captions show but a voice must say differently (`API	เอพีไอ`, `ภ.ง.ด.	ภอ งอ ดอ`); numbers need no entry, because amounts, baht and satang, and codes like `03-07` are read correctly on their own. Music changes chord at each chapter and a whoosh marks chapter changes (`--music none`, `--no-sfx`). The output keeps the picture untouched and writes `<name>.speech.tsv` beside it, listing every line as it was spoken.
+
+### Audio for a video made elsewhere
+
+If another tool (HyperFrames, Lemo-Opuscar, onetake…) already rendered the picture, Bloom can still voice and score it from Python:
+
+```python
+from bloom import foley, mix, sound, voice
+
+clips = [(voice.synth(text, cache, "omnivoice:male", fit=slot_seconds), slot_start) for text, slot_start, slot_seconds in lines]
+cues = foley.detect("picture.mp4", cuts=scene_starts, captions=caption_times) + [{"sfx": "whoosh", "t": c - 0.3} for c in scene_starts]
+music = sound.write_wav("music.wav", sound.music(timeline, total))
+fx = sound.write_wav("sfx.wav", sound.place(cues, total))
+mix.mux("picture.mp4", mix.master(clips, total, "mix.wav", music, fx), "final.mp4")
+```
+
+`fit` makes each line exactly as long as the slot the animation left for it. `foley.detect` reads the picture frame by frame: things starting to move become whooshes, swishes, pops or ticks by size; runs of tiny changes become key clicks; the rows where captions change are found from the caption times and ignored.
 
 ### Benchmark
 
@@ -84,14 +131,45 @@ uv run python bench/tts_bench.py --only elevenlabs
 
 The same six Thai sentences (everyday, formal, numbers, English words, a question, consonant clusters) go through every voice. Each voice is scored on speed (RTF), intelligibility (character error rate of a whisper.cpp round trip; needs `brew install whisper-cpp`) and ElevenLabs credits. Results land in `output/bench/`: `report.md`, `results.json`, and `listen.html` for hearing the clips side by side. CER can't hear warmth or rhythm, so listen before you pick.
 
-## Music and stock media
+### When a word comes out wrong
 
-`--bed` takes any audio file and ducks it under the narration. Bloom doesn't search or download stock media itself. If your AI client is connected to a stock library's MCP server (Artlist, for example), ask it to put a track in `assets/`, then pass that file to `--bed`. Sign-in and licensing stay with you and your client, and the CLI still runs without them. `assets/` is gitignored because stock media is licensed to you, not to everyone who clones the repo.
+Bloom can't retrain the voice model, but it remembers your fixes. After every `build` and `dub`, Whisper listens to each line, and `<name>.review.html` lists the ones that may be wrong. Each comes with its audio, what Whisper heard (with the differences marked), and fix commands you can copy:
+
+```sh
+uv run bloom say "ดูจากพาธที่วางสแกน" --voice omnivoice:@me --takes 3   # hear it, and other takes of it
+uv run bloom lexicon add "พาธ" "พ๊าธ"                                    # say it this way in every video
+uv run bloom dub … --retake 12                                           # or build … --retake hook: draw one line again
+```
+
+- **A word the voice keeps getting wrong: lexicon.** `~/.bloom/lexicon.tsv` applies to every build, dub, `say` and `voice test`. A project lexicon (`dub --lexicon`, or `lexicon.tsv` next to `script.md`) is applied on top of it and wins. Only the lines containing the word are voiced again on the next run. Respell how it sounds: a tone mark (`พ๊าธ`), a syllable break (`บาง ขุน เทียน`), or the spoken form of an abbreviation (`API` → `เอพีไอ`).
+- **One take stumbled: retake.** `--retake` draws that line again with a different seed. The take is kept in `<name>.takes.json` (dub) or `.bloom/takes.json` (build), so later runs keep it too.
+- **A respelling helps but not every time: pick by ear.** A spelling makes a pronunciation more likely, not certain. `dub … --audition 4,5 --takes-per 5` voices five takes of lines 4 and 5, writes `<name>.audition.html` and stops there, so a round costs only the takes. Choose one per line; its command (`--use-take 4=3,5=1`) re-mixes the video once with those takes. A dub plans its timing on take 0 and voices every other take to the same length, so the take you pick is exactly the clip the video gets.
+- **`bench/word_bench.py`** compares candidate spellings of one word with your own recording of it, by sound rather than by Whisper's spelling, and ranks them.
+- **Whisper points, your ears decide.** A line is flagged when what Whisper heard matches neither the caption nor the spoken form. Whisper writes English terms the way they're shown, so "API" doesn't count against a line spoken as "เอพีไอ". It can't hear everything: Thai final consonants are so soft that it hears พาธ and พาด the same.
+- **The same mistake everywhere** usually comes from the reference recording. Record your profile again, reading the passage clearly.
+
+### Speed
+
+Measured on an Apple M1 (16 GB), 7 Nov 2026:
+
+- **Voice.** A cloned voice with a 13 s reference takes about 42 s per line, 9.5 s of compute per second of speech. It was 15.8 before Bloom started preparing the reference once per run instead of once per line. The 5 s designed voices are about 4.8.
+- **Batching doesn't help on an M1.** Two, four and eight lines per GPU pass ran at 0.98×, 0.85× and 0.72× the speed of single lines, because the GPU is already full with one. Set `BLOOM_OV_BATCH` on CUDA cards, where batching pays.
+- **Picture.** Rendering uses 3 workers by default (`--workers`, `BLOOM_RENDER_WORKERS`). A 53 s video renders in 35 s instead of 66 s, and comes out visually identical (PSNR 56 dB).
+- **When speed matters more than polish**, use `BLOOM_OV_STEPS=16` (about twice as fast) or a shorter reference recording. Running two voice jobs at once doesn't help: there's one GPU, and both slow down.
+
+## Music and sound effects
+
+Every video gets a score and sound effects by default. Both are synthesized, so there is nothing to license and nothing to download.
+
+- **Music** follows the video: one chord per scene, changing on the cut, with tempo and progression set by each scene's mood (`~calm`, `~tense`, `~bright`). A mood stretch starts on its home chord, and the last scene resolves there. The music fades in and out, and ducks under the voice.
+- **Sound effects** come from the page (`data-sfx`, above). Every scene change also gets a whoosh that peaks on the cut.
+
+`--music <file>` uses your own track instead (looped, levelled, ducked), and `--music none` or `--no-sfx` leaves either out. Bloom doesn't search stock libraries itself. If your AI client is connected to one's MCP server (Artlist, for example), ask it to put a track in `assets/`, then pass that file to `--music`. Sign-in and licensing stay with you and your client, and the CLI still runs without them. `assets/` is gitignored because stock media is licensed to you, not to everyone who clones the repo.
 
 ## Layout
 
 ```
-bloom/       the pipeline: script.py · voice.py · mix.py · subs.py · render.py · __main__.py
+bloom/       the pipeline: script.py · voice.py · clone.py · lexicon.py · review.py · asr.py · thainum.py · subs.py · render.py · sound.py · foley.py · dub.py · mix.py · __main__.py
 scripts/     projects: <name>/script.md + <name>/scenes.html
 assets/      source videos, music, screenshots
 output/      rendered videos (gitignored)
