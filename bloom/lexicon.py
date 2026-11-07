@@ -19,6 +19,7 @@ from . import thainum, voice
 
 HEADER = "# How the voice says what the text shows: one shown<TAB>spoken per line; the longest match wins."
 THAI_ONLY = re.compile(r"[฀-๿]+")
+ENGLISH_WORDS = re.compile(r"[A-Za-z.][A-Za-z .\-]*")  # letters only: a code with digits keeps its spaces
 
 
 def global_path() -> Path:
@@ -50,6 +51,13 @@ def apply(text: str, pairs: list[tuple[str, str]]) -> str:
     for shown, spoken in pairs:
         if THAI_ONLY.fullmatch(shown):  # a Thai word respelt in place (เลขที่ -> เลข ที่): no pauses around it
             text = text.replace(shown, spoken)
+            continue
+        if ENGLISH_WORDS.fullmatch(shown) and THAI_ONLY.fullmatch(spoken.replace(" ", "")):
+            # an English word said in Thai script (ทับศัพท์, Excel -> เอ็กเซล): the spaces written around it in
+            # Thai text are only there because of the Latin letters, and said aloud they are pauses, so it
+            # joins the Thai on either side ("เลือกไฟล์เอ็กเซลที่…"). A space before a number stays
+            text = re.sub(f"(?:(?<=[\u0E00-\u0E7F]) )?{re.escape(shown)}(?: (?=[\u0E00-\u0E7F]))?",
+                          lambda m, s=spoken: f" {s} " if not (m.group().startswith(" ") or m.start() == 0) and m.string[m.start() - 1:m.start()].isspace() is False and not '\u0E00' <= m.string[m.start() - 1:m.start()] <= '\u0E7F' else s, text)
             continue
         # a foreign term or abbreviation gets spaces so it doesn't fuse with the Thai around it. A space
         # is a pause in Thai, though, so none between a name and the number it names (ทร.03-07 is
