@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 import shutil
+import os
 import subprocess
 import tempfile
 import urllib.request
@@ -32,12 +33,15 @@ def ensure_model() -> None:
         urllib.request.urlretrieve(MODEL_URL, part)
         part.rename(MODEL)
 
+# whisper.cpp uses 4 threads unless told; on a CPU-only machine the check is then the slowest step
+THREADS = int(os.environ.get("BLOOM_WHISPER_THREADS", 0)) or max(4, (os.cpu_count() or 4) - 1)
+
 
 def transcribe(wav: Path, language: str = "th") -> str:
     with tempfile.TemporaryDirectory() as d:
         w16 = Path(d) / "a.wav"
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-ar", "16000", "-ac", "1", str(w16)], check=True)
-        r = subprocess.run(["whisper-cli", "-m", str(MODEL), "-l", language, "-nt", "-np", "-f", str(w16)],
+        r = subprocess.run(["whisper-cli", "-m", str(MODEL), "-l", language, "-nt", "-np", "-t", str(THREADS), "-f", str(w16)],
                            check=True, capture_output=True, encoding="utf-8", errors="replace")
     return r.stdout.strip()
 
