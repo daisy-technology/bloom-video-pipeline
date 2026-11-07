@@ -25,6 +25,7 @@ import math
 import re
 import subprocess
 import shlex
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,9 @@ LEAD, GAP, TAIL = 0.15, 0.25, 0.35  # seconds: after a caption appears, between 
 MAX_LAG = 1.0                       # a line may run this far into the next caption before it is spoken faster
 MAX_SPEEDUP = 1.35                  # faster than this sounds rushed: shorten the caption instead
 CUT_GUARD = 0.5                     # hold a chapter's end this far before the cut, clear of any fade-out
+ENCODERS = ([["-c:v", "h264_videotoolbox", "-q:v", "70"]] if sys.platform == "darwin" else
+            [["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "19", "-b:v", "0"]]) + \
+           [["-c:v", "libx264", "-preset", "veryfast", "-crf", "16"]]  # the held picture: tried in order
 
 
 @dataclass
@@ -130,9 +134,13 @@ def held(video: Path, holds: list[tuple[float, float]], fps: float, out: Path) -
         n = round(secs * fps)
         chain.append(f"loop=loop={n}:size=1:start={round(at * fps) + added}")
         added += n
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-an", "-vf", ",".join([*chain, "setpts=N/FRAME_RATE/TB"]),
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", str(out)], check=True)
-    return out
+    base = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-an", "-vf", ",".join([*chain, "setpts=N/FRAME_RATE/TB"])]
+    # the GPU's own video encoder when there is one (a separate chip: it leaves the CPU, and the CUDA memory
+    # the voice needs, alone, and is several times faster); x264 on the CPU otherwise
+    for codec in ENCODERS:
+        if subprocess.run([*base, *codec, "-pix_fmt", "yuv420p", str(out)], capture_output=True).returncode == 0:
+            return out
+    raise RuntimeError(f"ffmpeg could not render the held picture of {video}")
 
 
 def _fps(video: Path) -> float:
@@ -153,7 +161,8 @@ def _fit(ln: Line, take: int) -> float | None:
 def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[Path] | None, spec: str | None,
         music: str, mood: str, sfx: bool, out: Path | None, dry_run: bool = False,
         retake: str | None = None, check: bool = True, flag_at: float = review.FLAG_AT,
-        audition: str | None = None, audition_takes: int = 4, use_take: str | None = None, hold_picture: bool = True) -> Path | None:
+        audition: str | None = None, audition_takes: int = 4, use_take: str | None = None, hold_picture: bool = True,
+        voice_only: bool = False) -> Path | None:
     total = voice.duration(video)
     cues = read_srt(srt)
     chapters = json.loads(Path(chapters_json).read_text(encoding="utf-8"))["chapters"] if chapters_json else \
@@ -214,6 +223,9 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
                                 fits=[_fit(ln, line_takes[i]) for i, ln in redo], takes=[line_takes[i] for i, _ in redo])
         for (_, ln), wav in zip(redo, wavs):
             ln.wav = wav
+    if voice_only:  # every clip is made: the picture, mix and check need no GPU, so another run can finish later
+        print(f"  voice ready in {voice.fmt_seconds(time.time() - t0)}", flush=True)
+        return None
     clips = [(ln.wav, ln.start) for ln in lines]
     picture = video
     if holds:  # the picture waits for the voice: chapters, music and effects move with it
