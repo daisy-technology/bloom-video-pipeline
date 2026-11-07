@@ -124,6 +124,8 @@ def main() -> None:
                         "stops there (no re-mix) unless --use-take is given")
     d.add_argument("--takes-per", type=int, default=4, help="takes per auditioned line (default 4)")
     d.add_argument("--use-take", metavar="N=K,…", help="use take K of line N (the numbers an audition page shows)")
+    d.add_argument("--no-hold", dest="hold", action="store_false",
+                   help="leave the picture as it is and speed late lines up (to 1.35x) instead of holding the frame until they finish")
 
     lx = sub.add_parser("lexicon", help="how the voice says words, remembered for every video")
     lxs = lx.add_subparsers(dest="action", required=True)
@@ -169,7 +171,7 @@ def main() -> None:
     a = ap.parse_args()
     if a.cmd == "dub":
         dub.dub(a.video, a.srt, a.chapters, a.lexicon, a.voice, a.music, a.mood, a.sfx, a.out, a.dry_run,
-                a.retake, a.check, a.flag_at, a.audition, a.takes_per, a.use_take)
+                a.retake, a.check, a.flag_at, a.audition, a.takes_per, a.use_take, a.hold)
         return
     if a.cmd == "lexicon":
         if a.action == "add":
