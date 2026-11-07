@@ -19,6 +19,7 @@ from . import thainum, voice
 
 HEADER = "# How the voice says what the text shows: one shown<TAB>spoken per line; the longest match wins."
 THAI_ONLY = re.compile(r"[฀-๿]+")
+THAI_CHAR = "[฀-๿]"
 ENGLISH_WORDS = re.compile(r"[A-Za-z.][A-Za-z .\-]*")  # letters only: a code with digits keeps its spaces
 
 
@@ -46,6 +47,13 @@ def load(*paths: Path | None) -> list[tuple[str, str]]:
     return sorted(merged.items(), key=lambda kv: -len(kv[0]))
 
 
+def _joined(m: re.Match, spoken: str) -> str:
+    """The ทับศัพท์ in place of the English word: joined to Thai, but kept apart from a Latin letter or a
+    sign it was written against, so the two don't fuse."""
+    before = m.string[m.start() - 1:m.start()] if m.start() else ""
+    return f" {spoken} " if before and not before.isspace() and not re.match(THAI_CHAR, before) else spoken
+
+
 def apply(text: str, pairs: list[tuple[str, str]]) -> str:
     """What the voice should say for `text`: lexicon first, then numbers (baht, codes) as Thai words."""
     for shown, spoken in pairs:
@@ -56,8 +64,7 @@ def apply(text: str, pairs: list[tuple[str, str]]) -> str:
             # an English word said in Thai script (ทับศัพท์, Excel -> เอ็กเซล): the spaces written around it in
             # Thai text are only there because of the Latin letters, and said aloud they are pauses, so it
             # joins the Thai on either side ("เลือกไฟล์เอ็กเซลที่…"). A space before a number stays
-            text = re.sub(f"(?:(?<=[\u0E00-\u0E7F]) )?{re.escape(shown)}(?: (?=[\u0E00-\u0E7F]))?",
-                          lambda m, s=spoken: f" {s} " if not (m.group().startswith(" ") or m.start() == 0) and m.string[m.start() - 1:m.start()].isspace() is False and not '\u0E00' <= m.string[m.start() - 1:m.start()] <= '\u0E7F' else s, text)
+            text = re.sub(f"(?:(?<={THAI_CHAR}) )?{re.escape(shown)}(?: (?={THAI_CHAR}))?", lambda m, s=spoken: _joined(m, s), text)
             continue
         # a foreign term or abbreviation gets spaces so it doesn't fuse with the Thai around it. A space
         # is a pause in Thai, though, so none between a name and the number it names (ทร.03-07 is

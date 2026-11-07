@@ -200,7 +200,9 @@ def test_dub_plan():
         lex.write_text("# comment\nINV8\tอินวอยซ์ 8\nAPI\tเอพีไอ\n", encoding="utf-8")
         words = lexicon.load(lex)
         assert lexicon.apply("แบบ INV8-202609-000539", words) == "แบบ อินวอยซ์ แปด สองศูนย์สองหกศูนย์เก้า ศูนย์ศูนย์ศูนย์ห้าสามเก้า"
-        assert lexicon.apply("ระบบ (เชื่อมโยง API)", words) == "ระบบ เชื่อมโยง เอพีไอ"
+        assert lexicon.apply("ระบบ (เชื่อมโยง API)", words) == "ระบบ เชื่อมโยงเอพีไอ"  # ทับศัพท์ joins the Thai: no pause
+        assert lexicon.apply("เลือกไฟล์ Excel ที่เตรียมไว้", [("Excel", "เอ็กเซล")]) == "เลือกไฟล์เอ็กเซลที่เตรียมไว้"
+        assert lexicon.apply("ปริมาณ API 1,250 ครั้ง", words) == "ปริมาณเอพีไอ หนึ่งพันสองร้อยห้าสิบ ครั้ง"  # a break before a number stays
 
         chapters = [{"start": 0.0, "end": 5.0, "title": "สาธิต\nการชำระภาษี"},
                     {"start": 5.0, "end": 17.167, "title": "1 · รายการ"}, {"start": 17.167, "end": 30.0, "title": "2 · เข้า"}]
