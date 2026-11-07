@@ -134,13 +134,27 @@ def held(video: Path, holds: list[tuple[float, float]], fps: float, out: Path) -
         n = round(secs * fps)
         chain.append(f"loop=loop={n}:size=1:start={round(at * fps) + added}")
         added += n
-    base = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-an", "-vf", ",".join([*chain, "setpts=N/FRAME_RATE/TB"])]
+    # -reinit_filter 0 keeps one filter graph for the whole video. A video joined from separately encoded
+    # parts can change its colour tags midway, and ffmpeg rebuilds the graph there by default, which restarts
+    # the loops' frame count (every later hold lands late) and setpts's N (as many frames as came before
+    # the change are dropped as already past). Measured on a 398 s video: 147 frames lost, holds 4.9 s late
+    base = ["ffmpeg", "-v", "error", "-y", "-reinit_filter", "0", "-i", str(video), "-an",
+            "-vf", ",".join([*chain, "setpts=N/FRAME_RATE/TB"])]
     # the GPU's own video encoder when there is one (a separate chip: it leaves the CPU, and the CUDA memory
     # the voice needs, alone, and is several times faster); x264 on the CPU otherwise
     for codec in ENCODERS:
         if subprocess.run([*base, *codec, "-pix_fmt", "yuv420p", str(out)], capture_output=True).returncode == 0:
+            # a lost frame shortens the picture, and the voice that runs past its end is cut off
+            if (got := _frames(out)) != (want := _frames(video) + added):
+                raise RuntimeError(f"the held picture of {video} has {got} frames, not {want}")
             return out
     raise RuntimeError(f"ffmpeg could not render the held picture of {video}")
+
+
+def _frames(video: Path) -> int:
+    return int(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
+                               "stream=nb_read_packets", "-of", "csv=p=0", str(video)],
+                              capture_output=True, text=True, check=True).stdout.strip())
 
 
 def _fps(video: Path) -> float:

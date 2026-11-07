@@ -231,10 +231,17 @@ def test_dub_plan():
         (at, secs), = holds
         assert abs(at - (8.0 - 1 / 30)) < 1e-6 and abs(secs * 30 - round(secs * 30)) < 1e-6
         assert a.start + a.dur + dub.GAP <= b.start + 1e-6 and abs(b.start - (b.cue + secs + dub.LEAD)) < 1e-6
-        src = Path(d) / "v.mp4"  # one second of picture, held for half a second in the middle
-        subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=d=1:s=64x36:r=30", str(src)], check=True)
-        out = dub.held(src, [(0.5, 0.5)], 30.0, Path(d) / "h.mp4")
-        assert abs(voice.duration(out) - 1.5) < 0.05
+        # two seconds of picture joined from two parts whose colour tags differ, as a video made of separately
+        # encoded parts can be; held for half a second in the second part. ffmpeg's default would restart
+        # its filters at the join and keep 31 of the 75 frames
+        for part, tag in (("a", "bt709"), ("b", "bt470bg")):
+            subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc=d=1:s=64x36:r=30", "-c:v", "libx264",
+                            "-colorspace", tag, str(Path(d) / f"{part}.ts")], check=True)
+        src = Path(d) / "v.mp4"
+        subprocess.run(["ffmpeg", "-v", "error", "-i", f"concat:{Path(d) / 'a.ts'}|{Path(d) / 'b.ts'}", "-c", "copy",
+                        str(src)], check=True)
+        out = dub.held(src, [(1.5, 0.5)], 30.0, Path(d) / "h.mp4")
+        assert dub._frames(out) == 75 and abs(voice.duration(out) - 2.5) < 0.05
         del os.environ["BLOOM_HOME"]
 
 
