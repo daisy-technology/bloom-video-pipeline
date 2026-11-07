@@ -246,6 +246,26 @@ def test_synth_many_say():
             voice.SPEED_FILE = old
 
 
+def test_prompt_retries_after_oom():
+    from bloom import voice
+
+    calls = []
+
+    class Model:
+        def create_voice_clone_prompt(self, ref_audio, ref_text):
+            calls.append(ref_audio)
+            if len(calls) == 1:
+                raise RuntimeError("CUDA driver error: out of memory")
+            return "prompt"
+
+    saved = voice._ov_model, voice.profile
+    voice._ov_model, voice.profile = (lambda: Model()), (lambda name: (Path("ref.wav"), "text"))
+    try:
+        assert voice._ov_prompt("@oom-test", "/tmp", "s") == "prompt" and len(calls) == 2  # retried once, then worked
+    finally:
+        voice._ov_model, voice.profile = saved
+
+
 def test_omnivoice_batches_back_off():
     import os
     import numpy as np
@@ -445,6 +465,7 @@ if __name__ == "__main__":
     test_estimate()
     test_dub_plan()
     test_synth_many_say()
+    test_prompt_retries_after_oom()
     test_omnivoice_batches_back_off()
     test_partition()
     test_lexicon()
