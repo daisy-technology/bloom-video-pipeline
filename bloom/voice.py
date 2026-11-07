@@ -14,6 +14,7 @@ animation never synthesizes (or bills) the same line twice.
 from __future__ import annotations
 
 import functools
+import gc
 import hashlib
 import importlib.util
 import json
@@ -283,7 +284,17 @@ def _ov_prompt(variant: str, cache: str, settings: str):
         ref, text = profile(variant[1:])
     else:
         ref, text = _ov_anchor(variant, Path(cache)), ANCHOR_TEXT
-    return _ov_model().create_voice_clone_prompt(ref_audio=str(ref), ref_text=text)
+    model = _ov_model()
+    # tokenizing the reference takes a burst of GPU memory on top of the loaded model. On a 4 GB card
+    # the allocator's leftovers from loading made it run out now and then: free them first, retry once
+    for attempt in (1, 2):
+        _empty_gpu_cache()
+        try:
+            return model.create_voice_clone_prompt(ref_audio=str(ref), ref_text=text)
+        except RuntimeError as e:  # torch.OutOfMemoryError is one too
+            if attempt == 2 or "out of memory" not in str(e).lower():
+                raise
+        gc.collect()  # the failed attempt's tensors, before the cache is emptied again
 
 
 def _empty_gpu_cache() -> None:
