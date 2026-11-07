@@ -136,8 +136,8 @@ wheels = [
 ]
 
 [[package]]
-name = "bloom-video-pipeline"
-version = "0.1.0"
+name = "blooms"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },

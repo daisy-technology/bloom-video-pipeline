@@ -13,18 +13,47 @@ scenes.html ─► render (Playwright → ffmpeg, picture only) ─┬─► sou
 
 Each scene lasts exactly as long as its voice clip plus a short pause, so picture and narration stay in sync without timing anything by hand.
 
-## Install
+Bloom also voices videos made elsewhere: `bloom dub` reads a video's captions and speaks each one as it appears (see Voice a video that already has captions). A short tour lives in [`docs/index.html`](docs/index.html).
 
-You need Python 3.10+, [uv](https://docs.astral.sh/uv/) and ffmpeg.
+## Set up
+
+You need Python 3.10 or newer, [uv](https://docs.astral.sh/uv/), ffmpeg and git. Setup takes about 4 GB of disk, most of it PyTorch and the voice model.
+
+**1. The tools.** Pick your system:
 
 ```sh
-brew install ffmpeg uv
-uv sync                            # includes PyTorch for OmniVoice, about 1 GB
-uv run playwright install chromium
-uv run python tests/test_bloom.py
+brew install uv ffmpeg git whisper-cpp                                     # macOS
+winget install --id astral-sh.uv -e; winget install Gyan.FFmpeg Git.Git     # Windows (PowerShell), then open a new window
+curl -LsSf https://astral.sh/uv/install.sh | sh && sudo apt install ffmpeg git   # Debian / Ubuntu
 ```
 
-The first OmniVoice run downloads the model (about 2.4 GB) into the Hugging Face cache.
+whisper.cpp is optional. Without it Bloom still makes videos, but skips the Whisper check and the review page that lists lines that may be wrong. On Windows and Linux, get `whisper-cli` from the [whisper.cpp releases](https://github.com/ggml-org/whisper.cpp/releases) or build it, and put it on your PATH.
+
+**2. Bloom.**
+
+```sh
+git clone https://github.com/daisy-technology/blooms.git
+cd blooms
+uv sync                              # PyTorch and OmniVoice, about 1 GB
+uv run playwright install chromium   # the browser that renders scenes.html
+```
+
+On a computer with an NVIDIA card, install torch's CUDA build into the same environment (pytorch.org shows the `pip install` line for your card; run it as `uv pip install …`). From then on start Bloom with `uv run --no-sync bloom …`, because a plain `uv run` puts the CPU build back.
+
+**3. Check it.**
+
+```sh
+uv run python tests/test_bloom.py                              # prints "ok"
+uv run python -c "from bloom import asr; asr.ensure_model()"   # once, if you installed whisper.cpp: its model, 1.6 GB
+```
+
+The first voice run downloads OmniVoice (about 2.4 GB) into the Hugging Face cache.
+
+**4. Your own voice (optional).** `uv run bloom voice record me` records a 15-second passage and checks it, and `--voice omnivoice:@me` then speaks in your voice. See Your own voice below. Without a profile, Bloom uses a designed voice.
+
+**5. A first video.** Make the sample with `uv run bloom build scripts/hello`, then open `output/hello.mp4`.
+
+**6. Another computer (optional).** If a second machine has the GPU, set it up the same way and see Another computer for the heavy work.
 
 ## Make a video
 
