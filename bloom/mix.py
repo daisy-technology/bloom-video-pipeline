@@ -13,7 +13,7 @@ REF_LUFS = -23.0    # every voice is brought here first, so one compressor setti
 def _lufs(probe: list[str], graph: list[str], label: str) -> float:
     """Integrated loudness of `label` in a filter graph, in LUFS: an analysis pass that writes nothing."""
     r = subprocess.run([*probe, "-filter_complex", ";".join([*graph, f"{label}loudnorm=print_format=json[m]"]),
-                        "-map", "[m]", "-f", "null", "-"], capture_output=True, text=True, check=True)
+                        "-map", "[m]", "-f", "null", "-"], capture_output=True, encoding="utf-8", errors="replace", check=True)
     i = float(json.loads(r.stderr[r.stderr.rindex("{"):r.stderr.rindex("}") + 1])["input_i"])
     return i if i > -70 else REF_LUFS  # silence: leave its level alone
 

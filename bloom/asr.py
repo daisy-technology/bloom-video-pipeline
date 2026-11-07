@@ -38,7 +38,7 @@ def transcribe(wav: Path, language: str = "th") -> str:
         w16 = Path(d) / "a.wav"
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-ar", "16000", "-ac", "1", str(w16)], check=True)
         r = subprocess.run(["whisper-cli", "-m", str(MODEL), "-l", language, "-nt", "-np", "-f", str(w16)],
-                           check=True, capture_output=True, text=True)
+                           check=True, capture_output=True, encoding="utf-8", errors="replace")
     return r.stdout.strip()
 
 

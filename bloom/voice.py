@@ -347,6 +347,6 @@ def _elevenlabs(text: str, model: str) -> bytes:
 def duration(path: Path) -> float:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, encoding="utf-8", errors="replace",
     )
     return float(out.stdout.strip())
