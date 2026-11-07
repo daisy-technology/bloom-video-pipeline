@@ -29,7 +29,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from bloom import voice  # noqa: E402
+from bloom import asr, voice  # noqa: E402
 
 SENTENCES = [
     ("everyday", "วันนี้อากาศดี เหมาะกับการออกไปเดินเล่นที่สวนสาธารณะตอนเย็น"),
@@ -51,62 +51,7 @@ VOICES = [
     ("ElevenLabs · turbo_v2_5", "elevenlabs:eleven_turbo_v2_5", {}, "credits; Thai not in its language list"),
 ]
 
-ASR_MODEL = Path.home() / ".cache/bloom/ggml-large-v3-turbo.bin"
-ASR_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin"
-
-# ---- scoring -------------------------------------------------------------------------------
-
-DIGITS = "ศูนย์ หนึ่ง สอง สาม สี่ ห้า หก เจ็ด แปด เก้า".split()
-PLACES = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"]
-
-
-def thai_number(n: int) -> str:
-    """Spell an integer the way it is read aloud: 1250 -> หนึ่งพันสองร้อยห้าสิบ, 21 -> ยี่สิบเอ็ด."""
-    if n == 0:
-        return DIGITS[0]
-    if n >= 1_000_000:
-        return thai_number(n // 1_000_000) + "ล้าน" + (thai_number(n % 1_000_000) if n % 1_000_000 else "")
-    s = str(n)
-    out = []
-    for i, ch in enumerate(s):
-        d, place = int(ch), len(s) - 1 - i
-        if d == 0:
-            continue
-        if place == 1 and d == 1:
-            out.append("สิบ")
-        elif place == 1 and d == 2:
-            out.append("ยี่สิบ")
-        elif place == 0 and d == 1 and len(s) > 1:
-            out.append("เอ็ด")
-        else:
-            out.append(DIGITS[d] + PLACES[place])
-    return "".join(out)
-
-
-def normalize(text: str) -> str:
-    """Compare what was said, not how it was typed: numbers spelled out, no spaces or punctuation."""
-    text = re.sub(r"\d[\d,]*", lambda m: thai_number(int(m.group().replace(",", ""))), text)
-    return re.sub(r"[^฀-๿a-z]", "", text.lower())
-
-
-def cer(ref: str, hyp: str) -> float:
-    a, b = normalize(ref), normalize(hyp)
-    prev = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        cur = [i]
-        for j, cb in enumerate(b, 1):
-            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
-        prev = cur
-    return prev[-1] / max(len(a), 1)
-
-
-def transcribe(wav: Path) -> str:
-    with tempfile.TemporaryDirectory() as d:
-        w16 = Path(d) / "a.wav"
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-ar", "16000", "-ac", "1", str(w16)], check=True)
-        r = subprocess.run(["whisper-cli", "-m", str(ASR_MODEL), "-l", "th", "-nt", "-np", "-f", str(w16)],
-                           check=True, capture_output=True, text=True)
-    return r.stdout.strip()
+# ---- scoring: bloom.asr (Whisper round trip) ----------------------------------------------
 
 
 def credits_used() -> int | None:
@@ -151,10 +96,10 @@ def run_voice(label: str, spec: str, env: dict, out: Path) -> dict:
                 wav = voice.synth(text, Path(cache), spec)
                 took = time.perf_counter() - t
                 dur = voice.duration(wav)
-                heard = transcribe(wav)
+                heard = asr.transcribe(wav)
                 mp3 = folder / f"{i}-{kind}.mp3"
                 subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(wav), "-b:a", "96k", str(mp3)], check=True)
-                rows.append({"kind": kind, "text": text, "heard": heard, "cer": round(cer(text, heard), 3),
+                rows.append({"kind": kind, "text": text, "heard": heard, "cer": round(asr.cer(text, heard), 3),
                              "synth_s": round(took, 2), "audio_s": round(dur, 2), "mp3": str(mp3.relative_to(out))})
                 print(f"  {kind:<9} cer {rows[-1]['cer']:.2f}  {took:5.1f}s for {dur:4.1f}s  heard: {heard}", flush=True)
             after = credits_used() if spec.startswith("elevenlabs") else 0
@@ -203,14 +148,7 @@ def main() -> None:
     ap.add_argument("--only", help="comma-separated providers: say,omnivoice,elevenlabs")
     ap.add_argument("--out", type=Path, default=Path("output/bench"))
     a = ap.parse_args()
-    if not shutil.which("whisper-cli"):
-        sys.exit("whisper-cli not found: brew install whisper-cpp")
-    if not ASR_MODEL.exists():
-        print(f"downloading {ASR_URL} (1.6 GB, once)…")
-        ASR_MODEL.parent.mkdir(parents=True, exist_ok=True)
-        part = ASR_MODEL.with_suffix(".part")
-        urllib.request.urlretrieve(ASR_URL, part)
-        part.rename(ASR_MODEL)
+    asr.ensure_model()
     only = set(a.only.split(",")) if a.only else None
     results = []
     for label, spec, env, _ in VOICES:
@@ -225,7 +163,14 @@ def main() -> None:
         except Exception as e:  # one failing voice (quota, model access) must not sink the rest
             print(f"  failed: {e}")
     if results:
-        report(results, a.out)
+        # merge with earlier runs, so `--only elevenlabs` adds rows instead of wiping the local voices
+        old = a.out / "results.json"
+        keep = [r for r in json.loads(old.read_text(encoding="utf-8"))] if old.exists() else []
+        fresh = {r["label"] for r in results}
+        order = [label for label, *_ in VOICES]
+        merged = sorted([r for r in keep if r["label"] not in fresh] + results,
+                        key=lambda r: order.index(r["label"]) if r["label"] in order else len(order))
+        report(merged, a.out)
         print((a.out / "report.md").read_text(encoding="utf-8"))
 
 

@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bloom: Thai voiceover videos</title>
+<meta name="description" content="Bloom turns a Thai voiceover script into a finished, animated video, and voices videos made elsewhere. Open source, MIT.">
+<style>
+  /* Design read: open-source tool page for Thai creators and developers, Apple-like calm product language.
+     Dials ENERGY 2 / RHYTHM 2 / MOTION 1: press feedback only. One accent (rose), used for the actions and the
+     measured numbers. Motif: the caption/voice pair, Bloom's own {shown|spoken} idea. */
+  :root {
+    --bg: #fbfbfd;
+    --surface: #ffffff;
+    --ink: #1d1d1f;
+    --muted: #515154;
+    --line: #d9d9de;
+    --accent: #c4245b;
+    --accent-ink: #ffffff;
+    --code-bg: #f2f2f5;
+    --nav: rgba(251, 251, 253, 0.72);
+    --thai: "Thonburi", "Leelawadee UI", "Noto Sans Thai", "Sarabun", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #111113;
+      --ink: #f5f5f7;
+      --muted: #a1a1a6;
+      --line: #2e2e33;
+      --accent: #ff5c8a;
+      --accent-ink: #1d0009;
+      --code-bg: #17171a;
+      --nav: rgba(0, 0, 0, 0.66);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 1.0625rem/1.55 system-ui, -apple-system, "Segoe UI", var(--thai);
+    -webkit-font-smoothing: antialiased;
+  }
+  [lang="th"] { font-family: system-ui, var(--thai); line-height: 1.7; }
+  a { color: inherit; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+  .skip { position: absolute; left: -999px; top: 0.5rem; background: var(--surface); padding: 0.5rem 1rem; border-radius: 8px; }
+  .skip:focus { left: 1rem; z-index: 10; }
+  .wrap { width: min(68rem, 100% - 2.5rem); margin-inline: auto; }
+
+  /* translucent nav: content scrolls under it, a soft edge instead of a hard rule */
+  nav {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--nav);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 60%, transparent);
+  }
+  nav .wrap { display: flex; align-items: center; gap: 1.5rem; height: 3.25rem; }
+  .mark { font-weight: 650; letter-spacing: -0.01em; text-decoration: none; margin-right: auto; }
+  nav a:not(.mark) { color: var(--muted); text-decoration: none; font-size: 0.875rem; }
+  nav a:not(.mark):hover { color: var(--ink); }
+
+  h1, h2, h3 { margin: 0; font-weight: 700; }
+  h1 { font-size: clamp(2.6rem, 7vw, 5rem); line-height: 1.04; letter-spacing: -0.035em; }
+  h2 { font-size: clamp(1.9rem, 4.2vw, 3rem); line-height: 1.08; letter-spacing: -0.025em; }
+  h3 { font-size: 1.25rem; line-height: 1.25; letter-spacing: -0.01em; }
+  p { margin: 0; }
+  .lede { font-size: clamp(1.15rem, 2.2vw, 1.4rem); line-height: 1.45; color: var(--muted); max-width: 38rem; }
+
+  .hero { padding: clamp(4rem, 12vw, 8.5rem) 0 clamp(3rem, 8vw, 5rem); }
+  .hero .lede { margin-top: 1.25rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+  .btn {
+    display: inline-flex; align-items: center; min-height: 2.75rem; padding: 0 1.25rem;
+    border-radius: 980px; font-size: 1rem; font-weight: 600; text-decoration: none;
+    transition: transform 100ms ease-out, background-color 150ms ease;
+  }
+  .btn:active { transform: scale(0.97); }  /* feedback on press, not on release */
+  .btn-primary { background: var(--accent); color: var(--accent-ink); }
+  .btn-quiet { color: var(--accent); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* the motif: what the caption shows, over what the voice says */
+  .pair { margin-top: 3.5rem; display: grid; gap: 0.25rem; max-width: 40rem; }
+  .pair .shown { font-size: clamp(1.3rem, 3vw, 1.75rem); font-weight: 600; letter-spacing: -0.01em; }
+  .pair .spoken { color: var(--accent); font-size: clamp(1.05rem, 2.2vw, 1.25rem); }
+  .pair .label { font-size: 0.8125rem; color: var(--muted); letter-spacing: 0.01em; }
+
+  section { padding: clamp(3.5rem, 9vw, 6.5rem) 0; }
+  section + section { border-top: 1px solid var(--line); }
+  .head { max-width: 42rem; }
+  .head p { margin-top: 1rem; color: var(--muted); font-size: 1.125rem; }
+
+  .ways { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.25rem; margin-top: 2.75rem; }
+  .ways > *, .split > *, .steps li > * { min-width: 0; }  /* a long command scrolls in its block, never widens the page */
+  .way { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: clamp(1.5rem, 3vw, 2.25rem); }
+  .way p { margin-top: 0.75rem; color: var(--muted); }
+  .way pre { margin-top: 1.25rem; }
+
+  pre, code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 0.875rem; }
+  pre { margin: 0; background: var(--code-bg); border-radius: 12px; padding: 1rem 1.1rem; overflow-x: auto; line-height: 1.6; }
+  p code, li code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 5px; }
+
+  .flow { list-style: none; margin: 2.75rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem 0; }
+  .flow li { display: flex; align-items: center; font-weight: 600; }
+  .flow li + li::before { content: ""; width: 1.75rem; height: 1.5px; background: var(--line); margin: 0 0.6rem; }
+  .flow small { display: block; font-weight: 400; color: var(--muted); font-size: 0.8125rem; }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(2rem, 5vw, 4rem); align-items: start; }
+  .points { margin: 2rem 0 0; padding: 0; list-style: none; display: grid; gap: 1.25rem; }
+  .points li { padding-left: 1.1rem; position: relative; color: var(--muted); }
+  .points li strong { color: var(--ink); }
+  .points li::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--accent); }
+
+  .numbers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; margin-top: 2.75rem; }
+  .numbers div { border-top: 2px solid var(--ink); padding-top: 1rem; }
+  .numbers b { display: block; font-size: clamp(2rem, 4.5vw, 2.75rem); letter-spacing: -0.03em; line-height: 1.1; color: var(--accent); }
+  .numbers span { color: var(--muted); font-size: 0.95rem; }
+  .note { margin-top: 1.5rem; font-size: 0.875rem; color: var(--muted); }
+
+  .steps { counter-reset: s; list-style: none; margin: 2.5rem 0 0; padding: 0; display: grid; gap: 1.5rem; max-width: 44rem; }
+  .steps li { counter-increment: s; display: grid; grid-template-columns: 2rem 1fr; gap: 0.25rem 0.75rem; }
+  .steps li::before { content: counter(s); grid-row: span 2; font-weight: 700; color: var(--accent); font-size: 1.25rem; line-height: 1.4; }
+  .steps p { color: var(--muted); }
+
+  footer { padding: 2.5rem 0 3.5rem; color: var(--muted); font-size: 0.875rem; border-top: 1px solid var(--line); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; justify-content: space-between; }
+
+  @media (max-width: 760px) {
+    nav a.opt { display: none; }
+    .ways, .split { grid-template-columns: 1fr; }
+    .numbers { grid-template-columns: 1fr; }
+    .flow { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }  /* wrapped rows would start on a connector */
+    .flow li { align-items: flex-start; }
+    .flow li + li::before { content: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn, .btn:active { transition: none; transform: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    nav { background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  }
+  @media (prefers-contrast: more) {
+    :root { --muted: var(--ink); --line: var(--ink); }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<nav aria-label="Main">
+  <div class="wrap">
+    <a class="mark" href="#top">Bloom</a>
+    <a class="opt" href="#ways">What it makes</a>
+    <a class="opt" href="#voice">Your voice</a>
+    <a class="opt" href="#gpu">Another computer</a>
+    <a href="#setup">Set up</a>
+  </div>
+</nav>
+
+<main id="main">
+  <header class="hero" id="top">
+    <div class="wrap">
+      <h1>A Thai script in.<br>A finished video out.</h1>
+      <p class="lede">Bloom voices your narration, times every scene to its voice, renders the picture, adds music and sound effects, and with whisper.cpp installed, checks each line by ear. It runs on your own computers.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="#setup">Set it up</a>
+        <a class="btn btn-quiet" href="https://github.com/daisy-technology/blooms">Source on GitHub</a>
+      </div>
+      <div class="pair" aria-label="Example: what the caption shows and what the voice says">
+        <span class="label">The caption shows</span>
+        <span class="shown" lang="th">ดู ภ.ง.ด.90 บรรทัดที่ 18</span>
+        <span class="label">The voice says</span>
+        <span class="spoken" lang="th">ดู ภองอดอเก้าสิบ บรรทัดที่ สิบแปด</span>
+      </div>
+    </div>
+  </header>
+
+  <section id="ways">
+    <div class="wrap">
+      <div class="head">
+        <h2>Two ways to make a video.</h2>
+        <p>Start from a script, or from a screen recording that already has captions.</p>
+      </div>
+      <div class="ways">
+        <article class="way">
+          <h3>Build from a script</h3>
+          <p>Write the narration in <code>script.md</code> and the visuals as an animated web page, <code>scenes.html</code>. Each scene lasts as long as its voice, so picture and narration stay in sync without timing anything by hand.</p>
+          <pre><code>uv run bloom build scripts/hello</code></pre>
+        </article>
+        <article class="way">
+          <h3>Voice a finished video</h3>
+          <p>Give it the video and its captions. Each caption is spoken when it appears, and the picture holds on the frame until the line is done, so nothing is rushed.</p>
+          <pre><code>uv run bloom dub export.mp4 --srt captions.srt</code></pre>
+        </article>
+      </div>
+      <ol class="flow" aria-label="What happens in a build">
+        <li><span>Script<small>script.md</small></span></li>
+        <li><span>Voice<small>OmniVoice, ElevenLabs, say</small></span></li>
+        <li><span>Timeline<small>and subtitles</small></span></li>
+        <li><span>Picture<small>Playwright, ffmpeg</small></span></li>
+        <li><span>Mix<small>music, effects</small></span></li>
+        <li><span>MP4<small>plus a review page</small></span></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="voice">
+    <div class="wrap split">
+      <div class="head">
+        <h2>Your voice, said your way.</h2>
+        <p>Record a 15-second passage once. Bloom checks the take and clones it on your machine, so the videos sound like you.</p>
+      </div>
+      <ul class="points">
+        <li><strong>Teach a word once.</strong> A lexicon entry like <code>API → เอพีไอ</code> applies to every later video, and only the lines that contain it are voiced again.</li>
+        <li><strong>Numbers read right.</strong> Baht and satang, dates, IDs digit by digit, and codes like <code>03-07</code> are said the way Thai speakers say them.</li>
+        <li><strong>Hear what went wrong.</strong> After each run, Whisper listens to every line, and the review page lists the ones that may be off, with the command that fixes each.</li>
+        <li><strong>Pick a take by ear.</strong> An audition page plays several takes of a line as the video will use them.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="gpu">
+    <div class="wrap">
+      <div class="head">
+        <h2>Borrow a stronger computer.</h2>
+        <p>With <code>--voice-on</code>, the voice is made on a machine with a GPU over SSH, and the picture and check finish on yours. <code>--on</code> runs all of it there. <code>bloom batch</code> voices the next video while the last one finishes.</p>
+      </div>
+      <div class="numbers">
+        <div><b>3.5 s</b><span>per voiced line on an RTX 3050 laptop GPU, at 16 steps</span></div>
+        <div><b>~3 min</b><span>for a 140-second video with the voice on that laptop and the rest on a Mac</span></div>
+        <div><b>6 min</b><span>for three videos in one batch, voicing and finishing at the same time</span></div>
+      </div>
+      <p class="note">Measured on 7 Nov 2026 between an Apple M1 and a Windows 11 laptop, with nothing else on the GPU. In the batch, one of the three videos was voiced already; the other two, 46 lines, were voiced from scratch.</p>
+      <pre style="margin-top:2rem"><code>uv run bloom remote add gpu-box me@10.0.0.5 --python C:/Users/me/blooms/.venv/Scripts/python.exe
+uv run bloom dub export.mp4 --srt captions.srt --voice omnivoice:@me --voice-on gpu-box</code></pre>
+    </div>
+  </section>
+
+  <section id="setup">
+    <div class="wrap">
+      <div class="head">
+        <h2>Set it up.</h2>
+        <p>You need Python 3.10 or newer, uv, ffmpeg and git. The README has the steps for macOS, Windows and Linux, and for NVIDIA cards.</p>
+      </div>
+      <ol class="steps">
+        <li><strong>Get Bloom</strong><pre><code>git clone https://github.com/daisy-technology/blooms.git
+cd blooms && uv sync && uv run playwright install chromium</code></pre></li>
+        <li><strong>Check it</strong><pre><code>uv run python tests/test_bloom.py</code></pre></li>
+        <li><strong>Make the sample video</strong><pre><code>uv run bloom build scripts/hello</code></pre></li>
+      </ol>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/daisy-technology/blooms#set-up">Read the full guide</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Bloom is open source under the MIT license. Part of the Daisy Technology family.</span>
+    <a href="https://github.com/daisy-technology/blooms">github.com/daisy-technology/blooms</a>
+  </div>
+</footer>
+</body>
+</html>
