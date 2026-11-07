@@ -246,24 +246,30 @@ def test_synth_many_say():
             voice.SPEED_FILE = old
 
 
-def test_prompt_retries_after_oom():
+def test_prompt_cache():
+    import omnivoice
+    import torch
     from bloom import voice
 
-    calls = []
+    made = []
 
     class Model:
         def create_voice_clone_prompt(self, ref_audio, ref_text):
-            calls.append(ref_audio)
-            if len(calls) == 1:
-                raise RuntimeError("CUDA driver error: out of memory")
-            return "prompt"
+            made.append(ref_audio)
+            return omnivoice.VoiceClonePrompt(ref_audio_tokens=torch.tensor([[1, 2, 3]]), ref_text=ref_text, ref_rms=0.1)
 
-    saved = voice._ov_model, voice.profile
-    voice._ov_model, voice.profile = (lambda: Model()), (lambda name: (Path("ref.wav"), "text"))
-    try:
-        assert voice._ov_prompt("@oom-test", "/tmp", "s") == "prompt" and len(calls) == 2  # retried once, then worked
-    finally:
-        voice._ov_model, voice.profile = saved
+    with tempfile.TemporaryDirectory() as d:
+        ref = Path(d) / "ref.wav"
+        ref.write_bytes(b"RIFF fake recording")
+        saved = voice._ov_model, voice.profile, voice.PROMPTS
+        voice._ov_model, voice.profile, voice.PROMPTS = (lambda: Model()), (lambda name: (ref, "hello")), Path(d) / "prompts"
+        try:
+            first = voice._ov_prompt("@cache-test", d, "a")
+            again = voice._ov_prompt("@cache-test", d, "b")  # a new run, or another machine: loaded, not tokenized
+            assert len(made) == 1 and again.ref_text == "hello" and again.ref_audio_tokens.tolist() == [[1, 2, 3]]
+            assert first.ref_rms == again.ref_rms and len(list((Path(d) / "prompts").glob("*.pt"))) == 1
+        finally:
+            voice._ov_model, voice.profile, voice.PROMPTS = saved
 
 
 def test_omnivoice_batches_back_off():
@@ -465,7 +471,7 @@ if __name__ == "__main__":
     test_estimate()
     test_dub_plan()
     test_synth_many_say()
-    test_prompt_retries_after_oom()
+    test_prompt_cache()
     test_omnivoice_batches_back_off()
     test_partition()
     test_lexicon()

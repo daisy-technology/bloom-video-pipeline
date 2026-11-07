@@ -14,7 +14,6 @@ animation never synthesizes (or bills) the same line twice.
 from __future__ import annotations
 
 import functools
-import gc
 import hashlib
 import importlib.util
 import json
@@ -173,6 +172,7 @@ def _finish(raw: Path, out: Path, fit: float | None) -> None:
 # ---- how long synthesis takes on this machine -----------------------------------------------
 
 SPEED_FILE = Path.home() / ".cache/bloom/speed.json"
+PROMPTS = SPEED_FILE.parent / "prompts"  # tokenized voice references, portable across machines
 # seconds of work per second of speech, measured on an Apple M1, until this machine has timed itself
 DEFAULT_RTF = {"omnivoice@32": 4.8, "omnivoice@16": 2.6, "elevenlabs": 0.4, "say": 0.15}
 CHARS_PER_SECOND = 15.0  # Thai at a natural narration pace
@@ -278,23 +278,27 @@ def _ov_anchor(instruct: str, cache: Path) -> Path:
 
 @functools.cache
 def _ov_prompt(variant: str, cache: str, settings: str):
-    """The voice's reference, loaded and tokenized once per run; OmniVoice would redo that for
-    every line. `settings` only keys the cache, so a re-recorded profile gets a fresh prompt."""
+    """The voice's reference, tokenized once and kept on disk (in PROMPTS, keyed by the recording's
+    bytes and text), so any later run loads it instead: on another machine too, given the same
+    recording. Tokenizing takes a burst of GPU memory on top of the loaded model, and on a 4 GB card
+    that made jobs fail at their start. `settings` only keys the in-memory cache."""
+    import omnivoice
+
     if variant.startswith("@"):
         ref, text = profile(variant[1:])
     else:
         ref, text = _ov_anchor(variant, Path(cache)), ANCHOR_TEXT
-    model = _ov_model()
-    # tokenizing the reference takes a burst of GPU memory on top of the loaded model. On a 4 GB card
-    # the allocator's leftovers from loading made it run out now and then: free them first, retry once
-    for attempt in (1, 2):
-        _empty_gpu_cache()
-        try:
-            return model.create_voice_clone_prompt(ref_audio=str(ref), ref_text=text)
-        except RuntimeError as e:  # torch.OutOfMemoryError is one too
-            if attempt == 2 or "out of memory" not in str(e).lower():
-                raise
-        gc.collect()  # the failed attempt's tensors, before the cache is emptied again
+    key = hashlib.sha1(Path(ref).read_bytes() + f"|{text}|{omnivoice.__version__}".encode()).hexdigest()[:16]
+    saved = PROMPTS / f"{key}.pt"
+    if saved.exists():
+        return omnivoice.VoiceClonePrompt.load(str(saved))
+    _empty_gpu_cache()
+    prompt = _ov_model().create_voice_clone_prompt(ref_audio=str(ref), ref_text=text)
+    PROMPTS.mkdir(parents=True, exist_ok=True)
+    tmp = saved.with_suffix(".tmp")
+    prompt.save(str(tmp))
+    tmp.replace(saved)
+    return prompt
 
 
 def _empty_gpu_cache() -> None:
