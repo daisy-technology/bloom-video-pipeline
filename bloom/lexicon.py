@@ -57,7 +57,8 @@ def apply(text: str, pairs: list[tuple[str, str]]) -> str:
         text = re.sub(re.escape(shown), lambda m, s=spoken: f" {s}" + ("" if m.string[m.end():m.end() + 1].isdigit() else " "), text)
     # brackets, and dashes between words; a hyphen inside a word or number stays (Wi-Fi, 03-07):
     # the voice says a hyphenated word as written, not as two separate words
-    text = re.sub(r"[()\[\]]|(?<!\w)-|-(?!\w)", " ", text)
+    text = re.sub(r"(\d)\s+-\s+(\d)", r"\1 ถึง \2", text)  # a range: ข้อ 2 - 9 -> ข้อ สอง ถึง เก้า
+    text = re.sub(r"[()\[\]_]|(?<!\w)-|-(?!\w)", " ", text)  # an underscore is never said
     return re.sub(r"\s+", " ", thainum.spell(text)).strip()
 
 
