@@ -15,6 +15,7 @@ import difflib
 import html
 import json
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,6 +23,12 @@ from pathlib import Path
 from . import asr, lexicon, voice
 
 FLAG_AT = 0.15  # character error rate above which a line is worth a listen
+
+
+def cli() -> str:
+    """How printed commands start: BLOOM_CLI (`bloom` for a pipx install; a remote job sets the local one),
+    else uv run in this checkout."""
+    return os.environ.get("BLOOM_CLI") or f"uv run --project {shlex.quote(str(Path(__file__).resolve().parent.parent))} bloom"
 
 
 def update_takes(path: Path, retake: str | None = None, use: str | None = None) -> dict[str, int]:
@@ -76,7 +83,7 @@ def page(lines: list[dict], out_html: Path, video: Path, title: str, voice_spec:
     """Write the review page. `retake` is the exact re-run command with `{n}` where the line number goes."""
     here = out_html.parent
     rel = lambda p: html.escape(Path(os.path.relpath(p, here)).as_posix())  # noqa: E731
-    bloom = f"uv run --project {Path(__file__).resolve().parent.parent} bloom"
+    bloom = cli()
     flagged = [ln for ln in lines if ln["flag"]]
     cards = []
     for ln in sorted(lines, key=lambda ln: (not ln["flag"], ln["n"])):

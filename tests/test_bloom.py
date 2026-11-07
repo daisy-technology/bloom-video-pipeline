@@ -490,6 +490,211 @@ def test_bench_scoring():
     assert word_bench.span("ยืนยันการยื่นแบบ", ["ไวไฟ"]) is None
 
 
+def test_portable_caches():
+    import hashlib
+    import os
+    import time
+    from bloom import dub, voice
+
+    with tempfile.TemporaryDirectory() as d:
+        d, cache = Path(d), Path(d) / "cache"
+        for where in ("a", "b"):  # one recording, kept in two places and copied at different times
+            (d / where / "me").mkdir(parents=True)
+            (d / where / "me" / "ref.wav").write_bytes(b"RIFF the same recording")
+            (d / where / "me" / "ref.txt").write_text("สวัสดี", encoding="utf-8")
+            time.sleep(0.01)
+        names = []
+        for where in ("a", "b"):
+            os.environ["BLOOM_VOICES"] = str(d / where)
+            names.append(voice._clip("ทดสอบ", cache, "omnivoice:@me", None)[3].name)
+        assert names[0] == names[1]  # a clip made on another computer is found here
+        old = voice._clip("ทดสอบ", cache, "omnivoice:@me", 4.5)[3]  # keyed by path + mtime, as before Nov 2026
+        legacy = old.with_name("omnivoice-" + hashlib.sha1(
+            f"omnivoice|{voice._settings('omnivoice', '@me', legacy=True)}|ทดสอบ|4.500s".encode()).hexdigest()[:16] + ".wav")
+        cache.mkdir()
+        legacy.write_bytes(b"made earlier")
+        assert voice.cached("ทดสอบ", cache, "omnivoice:@me", 4.5) and old.read_bytes() == b"made earlier" and not legacy.exists()
+        del os.environ["BLOOM_VOICES"]
+
+        for top in ("here", "there/mirror"):  # the same folders under two roots: the same work dir
+            (d / top / "src").mkdir(parents=True)
+            (d / top / "src" / "v.mp4").write_bytes(b"")
+        works = [dub.paths(d / top / "src" / "v.mp4", d / top / "out" / "v-voice.mp4")[1].name for top in ("here", "there/mirror")]
+        assert works[0] == works[1]
+        video = d / "here" / "src" / "v.mp4"
+        earlier = d / "here" / "out" / ".bloom" / hashlib.sha1(str(video.resolve()).encode()).hexdigest()[:10]
+        (earlier / "voice").mkdir(parents=True)  # named from the absolute path before: renamed, clips kept
+        out, work = dub.paths(video, d / "here" / "out" / "v-voice.mp4")
+        assert (work / "voice").is_dir() and not earlier.exists() and out.name == "v-voice.mp4"
+        assert dub.paths(video, None)[0] == video.with_name("v-voice.mp4")
+
+
+def test_remote():
+    import contextlib
+    import io
+    import json
+    import os
+    from pathlib import PurePosixPath, PureWindowsPath
+    import bloom.__main__ as cli
+    from bloom import remote, voice
+
+    assert remote._rel(PurePosixPath("/Users/me/my clip.mp4")) == "Users/me/my clip.mp4"
+    assert remote._rel(PureWindowsPath(r"C:\Users\me\ไฟล์.mp4")) == "C/Users/me/ไฟล์.mp4"
+    assert str(remote._back("Users/me/a.mp4", windows=False)) == "/Users/me/a.mp4"
+    assert str(remote._back("C/Users/me/a.mp4", windows=True)).replace("\\", "/") == "C:/Users/me/a.mp4"
+
+    argv = ["dub", "./v.mp4", "--srt", "c.srt", "--music", "auto", "--on", "box", "--lexicon=w.tsv", "--retake", "3"]
+    there = {"v.mp4": "M/v.mp4", "c.srt": "M/c.srt", "w.tsv": "M/w.tsv"}
+    assert remote._rewrite(argv, there, ("--on", "--voice-on")) == \
+        ["dub", "M/v.mp4", "--srt", "M/c.srt", "--music", "auto", "--lexicon=M/w.tsv", "--retake", "3"]
+    assert remote._rewrite(argv + ["--voice-on=x"], {}, ("--on", "--voice-on", *remote.STATEFUL)) == \
+        ["dub", "./v.mp4", "--srt", "c.srt", "--music", "auto", "--lexicon=w.tsv"]  # the finish here: retakes were applied there
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            cli.parser().parse_args(["dub", "v.mp4", "--srt", "c.srt", "--on", "a", "--voice-on", "b"])
+        raise AssertionError("--on with --voice-on accepted")
+    except SystemExit:
+        pass
+
+    assert remote._whole("Users/me/out/.bloom/0123456789/voice/x.wav") and remote._whole("Users/me/out/picture.mp4")
+    assert not remote._whole("Users/me/out/.bloom/0123456789/picture.mp4") and not remote._whole("p/.bloom/music.wav")
+    assert remote._voice("Users/me/out/.bloom/0123456789/voice/x.wav") and remote._voice("Users/me/out/v.takes.json")
+    assert remote._voice("p/.bloom/voice/x.wav") and remote._voice("p/.bloom/takes.json") and remote._voice("o/v.audition.html")
+    assert not remote._voice("Users/me/out/v.mp4") and not remote._voice("Users/me/out/v.review.html")
+    calls, saved_serve = [], remote.serve
+    remote.serve = lambda argv: calls.append(argv) or 0
+    try:  # a render worker on Windows or macOS runs run.py again as __mp_main__: it must not start the job twice
+        boot = {"__file__": str(Path(remote.__file__).resolve().parent.parent / "run.py")}
+        exec(compile(remote.RUN_PY, "run.py", "exec"), {**boot, "__name__": "__mp_main__"})
+        assert calls == []
+        try:
+            exec(compile(remote.RUN_PY, "run.py", "exec"), {**boot, "__name__": "__main__"})
+        except SystemExit as e:
+            assert e.code == 0 and len(calls) == 1
+    finally:
+        remote.serve = saved_serve
+    lines = remote._puts([("r/a b/ไทย.wav", Path('/x/say "hi".wav'))])
+    assert lines == ['-mkdir "r"', '-mkdir "r/a b"', 'put -p "/x/say \\"hi\\".wav" "r/a b/ไทย.wav"']
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        same, new = d / "same.txt", d / "new.txt"
+        same.write_text("a"), new.write_text("bb")
+        st = same.stat()
+        assert remote._changed({"r/same": same, "r/new": new}, {"r/same": [st.st_size, int(st.st_mtime)], "r/new": None}) \
+            == [("r/new", new)]
+        clip = d / ".bloom" / "abcdef0123" / "voice" / "omnivoice-1.wav"  # made here: the same clip, never replaced
+        clip.parent.mkdir(parents=True)
+        clip.write_bytes(b"heard here")
+        results = [[remote._mirror(same), st.st_size, int(st.st_mtime)], [remote._mirror(d / "gone.mp4"), 5, 0],
+                   [remote._mirror(d / ".bloom" / "abcdef0123" / "picture.mp4"), 9, 0], [remote._mirror(clip), 99, 0]]
+        assert remote._to_pull(results, remote._whole, "root") == [(f"root/{remote._mirror(d / 'gone.mp4')}", (d / "gone.mp4").resolve())]
+
+        # a job as sent: its inputs, the designed voice's take, and argv in the other computer's terms
+        (d / "src").mkdir()
+        video, srt = d / "src" / "v.mp4", d / "src" / "c.srt"
+        video.write_bytes(b""), srt.write_text("1\n")
+        argv = ["dub", str(video), "--srt", str(srt), "--voice", "say:Kanya", "--out", str(d / "out" / "v.mp4"), "--voice-on", "box"]
+        a = cli.parser().parse_args(argv)
+        anchor = remote.dub.paths(video, a.out)[1] / "voice" / "omnivoice-anchor-1.wav"
+        anchor.parent.mkdir(parents=True)
+        anchor.write_bytes(b"one take")
+        files, job, out = remote._job(a, argv, {"name": "box", "root": "bloom-jobs/me", "path": ["C:/tools"]}, True, "again")
+        sent = {p for p in files.values()}
+        assert {video, srt, anchor} <= sent and out == d / "out" / "v.mp4"
+        there = job["argvs"][0]
+        assert there[:2] == ["dub", remote._mirror(video)] and "--voice-on" not in there and "box" not in there
+        assert there[-5:] == ["--out", remote._mirror(out), "--voice-only", "--again", "again"]
+        assert job["absent"] == [remote._mirror(out.with_suffix(".takes.json"))] and job["path"] == ["C:/tools"]
+
+        # the other side, in-process: settle the job's world, run it, list what it wrote
+        root = d / "root"
+        (root / ".jobs").mkdir(parents=True)
+        (root / ".home" / "prompts").mkdir(parents=True)
+        (root / ".home" / "prompts" / "k.pt").write_bytes(b"prompt")
+        (root / "Users" / "me").mkdir(parents=True)
+        (root / "Users" / "me" / "v.takes.json").write_text("{}")  # deleted here, so reset there
+        job = {"argvs": [["dub", "Users/me/v.mp4", "--srt", "Users/me/c.srt", "--out", "Users/me/out/v.mp4"]],
+               "env": {"BLOOM_OV_STEPS": "16", "BLOOM_OV_SEED": None}, "cli": "bloom", "path": [],
+               "home": {"lexicon.tsv": "API\tเอพีไอ\n", "voices/me/ref.txt": "สวัสดี"}, "absent": ["Users/me/v.takes.json"]}
+        (root / ".jobs" / "j.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+        seen = {}
+
+        def fake_main(argv):
+            seen.update(steps=os.environ.get("BLOOM_OV_STEPS"), seed=os.environ.get("BLOOM_OV_SEED"),
+                        cli=os.environ.get("BLOOM_CLI"), home=os.environ.get("BLOOM_HOME"))
+            out, work = remote.dub.paths(Path("Users/me/v.mp4"), Path("Users/me/out/v.mp4"))
+            (work / "voice").mkdir(parents=True)
+            (work / "voice" / "a.wav").write_bytes(b"clip")
+            out.write_bytes(b"video")
+
+        saved = (dict(os.environ), os.getcwd(), cli.main, voice.PROMPTS)
+        os.environ["BLOOM_OV_SEED"] = "3"
+        cli.main, voice.PROMPTS = fake_main, d / "prompts-here"
+        printed = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(printed):
+                assert remote.serve(["run", ".jobs/j.json"], root) == 0
+        finally:
+            os.chdir(saved[1])
+            os.environ.clear()
+            os.environ.update(saved[0])
+            cli.main, voice.PROMPTS = saved[2], saved[3]
+        result = json.loads(printed.getvalue().split(remote.RESULT, 1)[1])
+        names = {f[0] for f in result["files"]}
+        assert seen["steps"] == "16" and seen["seed"] is None and seen["cli"] == "bloom"  # set as here, unset as here
+        assert Path(seen["home"]) == root / ".home" and (root / ".home" / "lexicon.tsv").read_text(encoding="utf-8") == "API\tเอพีไอ\n"
+        assert (root / ".home" / "voices" / "me" / "ref.txt").exists() and (d / "prompts-here" / "k.pt").exists()
+        assert not (root / "Users" / "me" / "v.takes.json").exists() and not (root / ".jobs" / "j.json").exists()
+        assert "Users/me/out/v.mp4" in names and any(n.endswith("/voice/a.wav") for n in names)
+        assert not (root / ".jobs" / "j.pid").exists()  # a job that ended leaves nothing to stop
+
+        # Ctrl-C here stops a job there with all it started (losing the connection doesn't, on Windows)
+        import subprocess
+        sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+        (root / ".jobs" / "k.pid").write_text(str(sleeper.pid))
+        assert remote.serve(["stop", ".jobs/k.json"], root) == 0
+        assert sleeper.wait(timeout=10) != 0 and not (root / ".jobs" / "k.pid").exists()
+        assert remote.serve(["stop", ".jobs/k.json"], root) == 0  # one that ended already: nothing to do
+
+
+def test_batch():
+    import contextlib
+    import io
+    import os
+    import bloom.__main__ as cli
+    from bloom import batch
+
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "videos.txt"
+        f.write_text("# three videos\na.mp4 --srt a.srt --retake 2\n\n\"b c.mp4\" --srt b.srt\nd.mp4 --srt d.srt --out v/d.mp4\n",
+                     encoding="utf-8")
+        events = []
+
+        def voice(argv):  # the second video's voice fails: it is never finished
+            events.append(("voice", argv[1]))
+            if argv[1] == "b c.mp4":
+                raise SystemExit(1)
+
+        def finish(argv, label):
+            events.append(("finish", argv[1]))
+            assert "--retake" not in argv and "--again" in argv  # voicing applied the retake already
+            return 0
+
+        saved = (cli.main, batch._finish, os.getcwd())
+        cli.main, batch._finish = voice, finish
+        try:
+            with contextlib.redirect_stdout(io.StringIO()) as printed:
+                code = batch.batch(f)
+        finally:
+            cli.main, batch._finish = saved[:2]
+            os.chdir(saved[2])
+        assert code == 1 and "failed: b c-voice.mp4" in printed.getvalue()
+        assert [e for e in events if e[0] == "finish"] == [("finish", "a.mp4"), ("finish", "d.mp4")]
+        for video in ("a.mp4", "d.mp4"):  # each video is finished only once its own voice is done
+            assert events.index(("voice", video)) < events.index(("finish", video))
+
+
 if __name__ == "__main__":
     test_parse()
     test_cues()
@@ -510,4 +715,7 @@ if __name__ == "__main__":
     test_audition()
     test_review()
     test_bench_scoring()
+    test_portable_caches()
+    test_remote()
+    test_batch()
     print("ok")
