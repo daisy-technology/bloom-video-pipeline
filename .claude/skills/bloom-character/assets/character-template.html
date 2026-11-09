@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<style>
+  /* The font ships with the project (fonts/, with its OFL.txt). Rename FONT and the files. */
+  @font-face { font-family: "FONT"; font-weight: 500; src: url(fonts/FONT-Medium.ttf); }
+  @font-face { font-family: "FONT"; font-weight: 700; src: url(fonts/FONT-Bold.ttf); }
+
+  :root { --ink: #33283a; --bg: #ffe9d6; --ground: #f6c9a8; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; color: var(--ink);
+               font-family: "FONT", sans-serif; font-weight: 700;
+               background: linear-gradient(var(--bg) 0 70%, var(--ground) 70%); }
+  section { position: absolute; inset: 0; }
+  svg { display: block; shape-rendering: crispEdges; overflow: visible; }
+
+  /* Entry wrapper: its FIRST animation is the entry, so data-sfx fires on it. Loops live inside. */
+  .stage { position: absolute; left: 50%; width: 720px; margin-left: -360px; top: 700px;
+           animation: pop .5s steps(5) both; transform-origin: 50% 100%; }
+
+  /* One CSS px inside the sprite's SVG = one sprite pixel. Use steps() so motion snaps like a sprite.
+     Never add a second timing function (`steps(4) ... linear`): the whole declaration gets dropped. */
+  .bob   { animation: bob 1s steps(1) infinite; }
+  .shut  { animation: blink 3.2s steps(1) infinite 1.1s; opacity: 0; }
+  .talk  { animation: talk .32s steps(1) infinite; }
+
+  #caption { position: absolute; left: 70px; right: 70px; bottom: 170px; padding: 30px 40px;
+             background: #fff; border: 10px solid var(--ink); box-shadow: 12px 12px 0 #0002;
+             text-align: center; font-size: 58px; line-height: 1.45; }
+  #caption:empty { display: none }
+
+  @keyframes pop   { from { transform: scale(0) } }
+  @keyframes bob   { 50% { transform: translateY(-1px) } }
+  @keyframes blink { 0% { opacity: 0 } 94% { opacity: 1 } }
+  @keyframes talk  { 0% { opacity: 1 } 50% { opacity: 0 } }
+</style>
+</head>
+<body>
+  <!-- one <section> per `## id` in script.md -->
+  <section data-scene="hello">
+    <div class="stage" data-sfx="pop"><svg data-sprite="hero" data-character="hero"></svg></div>
+  </section>
+
+  <div id="caption"></div>
+
+<script>
+// Palette: one character per colour; "." is transparent. Keep it to ~6-10 colours.
+const C = { K: "#33283a", B: "#7cc6a4", b: "#5aa587", W: "#ffffff", E: "#33283a", P: "#f7a1b5" };
+
+// Placeholder body (12 x 10). Replace with the character's own maps; every row of a map the same length.
+const BODY = [
+  "...KKKKKK...",
+  "..KBBBBBBK..",
+  ".KBBBBBBBBK.",
+  ".KBWEBBWEBK.",
+  "KBBEEBBEEBBK",
+  "KBPBBBBBBPBK",
+  "KBBBBKKBBBBK",
+  "KbBBBBBBBBbK",
+  ".KbbbbbbbbK.",
+  "..KKKKKKKK..",
+];
+const SHUT  = ["BB..BB", "EE..EE"];   // over the eyes: drawn at (3, 3)
+const MOUTH = ["KPPK"];               // open mouth: drawn at (4, 6)
+
+// Rows -> <rect>s, merging runs of one colour; (x0, y0) places the map in sprite pixels.
+function px(map, x0 = 0, y0 = 0, cls = "") {
+  let out = "";
+  map.forEach((row, y) => {
+    for (let x = 0; x < row.length;) {
+      let n = 1;
+      while (row[x + n] === row[x]) n++;
+      if (row[x] !== ".") out += `<rect x="${x0 + x}" y="${y0 + y}" width="${n}" height="1" fill="${C[row[x]]}"/>`;
+      x += n;
+    }
+  });
+  return `<g class="${cls}">${out}</g>`;
+}
+
+// Layers paint in order: things behind the body (tail, back wing) first, overlays (eyes shut, mouth) last.
+// Anything worn (hat, bow, backpack) goes INSIDE the bob group, or it floats a pixel off the body.
+const hero = `<g class="bob">
+    ${px(BODY, 0, 0)}
+    ${px(SHUT, 3, 3, "shut")}
+    ${px(MOUTH, 4, 6, "talk")}
+  </g>`;
+
+// Fetch every face now: a face no visible text uses yet stays unloaded, Bloom's fonts.ready
+// doesn't wait for it, and the first captions render in a fallback font.
+document.fonts.forEach(f => f.load());
+
+const sprites = { hero: [hero, "0 0 12 10"] };   // viewBox = the sprite's full extent, tail and hat included
+document.querySelectorAll("[data-sprite]").forEach(svg => {
+  const [body, box] = sprites[svg.dataset.sprite];
+  svg.setAttribute("viewBox", box);
+  svg.innerHTML = body;
+});
+</script>
+</body>
+</html>
