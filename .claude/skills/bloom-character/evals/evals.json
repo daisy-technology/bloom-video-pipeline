@@ -1,0 +1,29 @@
+{
+  "skill_name": "bloom-character",
+  "evals": [
+    {
+      "id": 1,
+      "name": "frog-wizard-grandpa",
+      "prompt": "make me a new bloom video project called frog-wizard: a pixel art frog wizard with a pointy hat with stars on it who waves his wand. two scenes of thai narration where he introduces himself. captions in Kanit font and he should sound like an old grandpa",
+      "expected_output": "A Bloom project (script.md + scenes.html + bundled Kanit font) with an original animated pixel frog, a valid elderly male OmniVoice voice, and a preview of each scene.",
+      "files": [],
+      "expect": {"font": "Kanit", "gender": "male", "age": ["elderly"], "particle": "ครับ"}
+    },
+    {
+      "id": 2,
+      "name": "owl-teacher-thai",
+      "prompt": "อยากได้ตัวละครนกฮูกพิกเซลใส่แว่นกลม เป็นครูสอนคณิต กระพริบตาได้ ทำเป็นโปรเจกต์ bloom ชื่อ owl-teacher 3 ฉาก ฟอนต์ Itim เสียงผู้หญิงวัยทำงาน",
+      "expected_output": "A three-scene Bloom project with an original pixel owl in round glasses that blinks, Itim bundled for captions, and a young-adult female voice.",
+      "files": [],
+      "expect": {"font": "Itim", "gender": "female", "age": ["young adult", "middle-aged"], "particle": "ค่ะ"}
+    },
+    {
+      "id": 3,
+      "name": "robot-sidekick-existing",
+      "prompt": "add a cute pixel robot mascot to my existing bloom project (it's in the hello-copy folder). it should blink and its antenna should bounce. switch the captions to the Sriracha font and make the narration sound like a little boy",
+      "expected_output": "The existing hello project updated in place: a pixel robot in its scenes with blinking and a bouncing antenna, Sriracha bundled for captions, a male child voice, and the script's particles switched to ครับ.",
+      "files": ["inputs/hello-copy/script.md", "inputs/hello-copy/scenes.html"],
+      "expect": {"font": "Sriracha", "gender": "male", "age": ["child"], "particle": "ครับ"}
+    }
+  ]
+}
