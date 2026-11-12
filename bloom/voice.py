@@ -10,6 +10,11 @@ Pick a voice with `--voice <provider>[:<variant>]` (or BLOOM_VOICE):
 
 Clips are cached by provider + settings + text, so re-rendering after changing only the
 animation never synthesizes (or bills) the same line twice.
+
+Delivery tags in the text (`[laughter] ดีใจจัง`) are performed where the voice knows them:
+OmniVoice has a fixed set of non-verbal sounds (OV_TAGS); ElevenLabs v3 takes free-form
+direction (`[excited]`, `[whispers]`) and OmniVoice's names are translated for it; `say` reads
+none, so they are dropped. A tag a voice can't perform is dropped with a note, never spoken.
 """
 from __future__ import annotations
 
@@ -26,9 +31,43 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import thainum
+from . import script, thainum
 
 PROVIDERS = ("omnivoice", "elevenlabs", "say")
+
+# OmniVoice's non-verbal sounds (omnivoice 0.2, models/omnivoice.py _NONVERBAL_PATTERN)
+OV_TAGS = ("laughter", "sigh", "confirmation-en", "question-en", "question-ah", "question-oh", "question-ei",
+           "question-yi", "surprise-ah", "surprise-oh", "surprise-wa", "surprise-yo", "dissatisfaction-hnn")
+# the same sounds in ElevenLabs v3's words, and back
+OV_TO_EL = {"laughter": "laughs", "sigh": "sighs", "surprise-ah": "gasps", "surprise-oh": "gasps",
+            "surprise-wa": "gasps", "surprise-yo": "gasps", "dissatisfaction-hnn": "annoyed"}
+EL_TO_OV = {"laughs": "laughter", "laughing": "laughter", "chuckles": "laughter", "giggles": "laughter",
+            "sighs": "sigh", "exhales": "sigh", "gasps": "surprise-ah", "surprised": "surprise-oh"}
+
+
+@functools.cache
+def _dropped(tag: str, provider: str) -> None:
+    known = f" (it knows {', '.join(OV_TAGS)})" if provider == "omnivoice" else ""
+    print(f"  note: {provider} can't perform [{tag}], so it is left out{known}")
+
+
+def delivery(text: str, provider: str) -> str:
+    """`text` with its delivery tags in the form this voice performs; the ones it can't, left out."""
+    if "[" not in text:
+        return text
+
+    def tag(m) -> str:
+        name = m.group(0).strip().strip("[]").strip()
+        if provider == "omnivoice":
+            name = EL_TO_OV.get(name, name)
+            if name in OV_TAGS:
+                return f"{m.group(1)}[{name}]{m.group(2)}"
+        elif provider == "elevenlabs":
+            return f"{m.group(1)}[{OV_TO_EL.get(name, name)}]{m.group(2)}"
+        _dropped(name, provider)
+        return " " if m.group(1) or m.group(2) else ""
+
+    return script.TAG.sub(tag, text).strip()
 
 # OmniVoice: every scene clones one reference voice, so the voice stays the same across scenes.
 # The reference is a voice profile (`@name`), or else designed once from the instruct and cached.
@@ -101,6 +140,7 @@ def _settings(provider: str, variant: str, legacy: bool = False) -> str:
 
 def _clip(text: str, cache: Path, spec: str | None, fit: float | None, take: int = 0) -> tuple[str, str, str, Path]:
     provider, variant = resolve(spec)
+    text = delivery(text, provider)
     if provider == "omnivoice":
         text = thainum.spell(text)  # say and ElevenLabs read digits themselves; OmniVoice garbles them
     fitted = f"|{fit:.3f}s" if fit else ""

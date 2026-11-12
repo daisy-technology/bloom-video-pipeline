@@ -3,16 +3,27 @@
 `{shown|spoken}` splits what the caption shows from what the voice says, for
 abbreviations and English that TTS misreads: `{ภ.ง.ด.90|ภองอดอเก้าสิบ}`.
 `## outro +1.5` holds the scene 1.5 s past the end of its voice.
-`## fix ~bright` sets the music's mood from this scene on (calm | tense | bright).
+`## fix ~bright` sets the music's mood from this scene on (calm | tense | bright | chip | playful | lofi).
+`[laughter]`, `[sigh]`, `[surprise-wa]`… direct the delivery right where they stand: the voice
+performs them, the captions never show them (see bloom/voice.py for each voice's tags).
 """
 from __future__ import annotations
 
 import re
 from pathlib import Path
 
-MOODS = ("calm", "tense", "bright")
+MOODS = ("calm", "tense", "bright", "chip", "playful", "lofi")
 HEADING = re.compile(r"^##\s+([\w-]+)((?:\s+(?:\+\d+(?:\.\d+)?s?|~[a-z]+))*)\s*$")
 SAY_AS = re.compile(r"\{([^|{}]+)\|([^{}]+)\}")
+TAG = re.compile(r"(\s*)\[[a-z][a-z, -]*\](\s*)")  # a delivery tag: [laughter], [surprise-wa], [whispers]
+
+
+def untagged(text: str) -> str:
+    """The words without their delivery tags: what a caption shows and what Whisper should hear.
+    A tag between two phrases leaves their break; one glued inside a phrase leaves none."""
+    if "[" not in text:
+        return text
+    return TAG.sub(lambda m: " " if m.group(1) or m.group(2) else "", text).strip()
 
 
 def parse(path: Path) -> list[dict]:
@@ -38,7 +49,7 @@ def parse(path: Path) -> list[dict]:
     out = []
     for s in scenes:
         raw_text = " ".join(s["lines"])
-        out.append({"id": s["id"], "text": SAY_AS.sub(r"\1", raw_text), "speech": SAY_AS.sub(r"\2", raw_text),
+        out.append({"id": s["id"], "text": untagged(SAY_AS.sub(r"\1", raw_text)), "speech": SAY_AS.sub(r"\2", raw_text),
                     "hold": s["hold"], "mood": s["mood"]})
     ids = [s["id"] for s in out]
     if not out:

@@ -202,7 +202,7 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
         music: str, mood: str, sfx: bool, out: Path | None, dry_run: bool = False,
         retake: str | None = None, check: bool = True, flag_at: float = review.FLAG_AT,
         audition: str | None = None, audition_takes: int = 4, use_take: str | None = None, hold_picture: bool = True,
-        voice_only: bool = False, again: str | None = None) -> Path | None:
+        voice_only: bool = False, again: str | None = None, lufs: float | None = mix.DELIVERY_LUFS) -> Path | None:
     total = voice.duration(video)
     cues = read_srt(srt)
     chapters = json.loads(Path(chapters_json).read_text(encoding="utf-8"))["chapters"] if chapters_json else \
@@ -275,7 +275,10 @@ def dub(video: Path, srt: Path, chapters_json: Path | None, lexicon_files: list[
         (None if music == "none" else Path(music))
     fx = sound.write_wav(work / "sfx.wav", sound.place([{"sfx": "whoosh", "t": ch["start"] - 0.3}
                                                         for ch in chapters[1:]], total)) if sfx else None
-    mix.mux(picture, mix.master(clips, total, work / "mix.wav", bed, fx), out)
+    mix.mux(picture, mix.master(clips, total, work / "mix.wav", bed, fx, lufs=lufs), out)
+    if lufs is not None:
+        m, ok = mix.report(out, lufs)
+        print(f"  loudness: {m['i']:.1f} LUFS, true peak {m['tp']:.1f} dBTP" + ("" if ok else "  (off target)"))
 
     rows = [{"n": n, "start": ln.start, "shown": ln.shown, "spoken": ln.spoken, "wav": ln.wav, "take": k,
              "heard": "", "score": 0.0, "flag": False} for n, (ln, k) in enumerate(zip(lines, line_takes), 1)]

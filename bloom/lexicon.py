@@ -5,9 +5,10 @@ A lexicon is a TSV, one `shown<TAB>spoken` pair per line (# for comments):
     API	เอพีไอ
     บางขุนเทียน	บาง ขุน เทียน
 
-Every dub and build reads the global lexicon, ~/.bloom/lexicon.tsv, plus a project lexicon when
-there is one (`dub --lexicon`, or lexicon.tsv next to a script.md); on the same shown text the
-project wins. This is how Bloom learns: OmniVoice can't be retrained, but a word fixed here once is
+Every dub and build reads three layers, each overriding the one before on the same shown text:
+Bloom's shared lexicon (bloom/lexicon.tsv, in the repo: corrections every machine, person and agent
+gets), the person's global lexicon (~/.bloom/lexicon.tsv), and a project lexicon when there is one
+(`dub --lexicon`, or lexicon.tsv next to a script.md). This is how Bloom learns: OmniVoice can't be retrained, but a word fixed here once is
 said right in every later video, and only the lines containing it are voiced again.
 """
 from __future__ import annotations
@@ -20,7 +21,11 @@ from . import thainum, voice
 HEADER = "# How the voice says what the text shows: one shown<TAB>spoken per line; the longest match wins."
 THAI_ONLY = re.compile(r"[฀-๿]+")
 THAI_CHAR = "[฀-๿]"
+TAG = re.compile(r"\[[a-z][a-z, -]*\]")  # a delivery tag (bloom/script.py): the voice performs it
 ENGLISH_WORDS = re.compile(r"[A-Za-z.][A-Za-z .\-]*")  # letters only: a code with digits keeps its spaces
+
+
+SHARED = Path(__file__).parent / "lexicon.tsv"  # versioned with Bloom: fixes that hold for every voice
 
 
 def global_path() -> Path:
@@ -40,9 +45,10 @@ def read(path: Path | None) -> dict[str, str]:
 
 
 def load(*paths: Path | None) -> list[tuple[str, str]]:
-    """The global lexicon, then each path in turn (a later file wins on the same shown), longest shown first."""
+    """Bloom's shared lexicon, the global one, then each path in turn (a later file wins on the same shown),
+    longest shown first."""
     merged: dict[str, str] = {}
-    for path in (global_path(), *paths):
+    for path in (SHARED, global_path(), *paths):
         merged.update(read(path))
     return sorted(merged.items(), key=lambda kv: -len(kv[0]))
 
@@ -55,7 +61,18 @@ def _joined(m: re.Match, spoken: str) -> str:
 
 
 def apply(text: str, pairs: list[tuple[str, str]]) -> str:
-    """What the voice should say for `text`: lexicon first, then numbers (baht, codes) as Thai words."""
+    """What the voice should say for `text`: lexicon first, then numbers (baht, codes) as Thai words.
+    Delivery tags ([laughter]) pass through untouched: each stands aside as one private-use character."""
+    tags = [m.group(0) for m in TAG.finditer(text)]
+    if tags:
+        it = iter(range(len(tags)))
+        text = TAG.sub(lambda m: chr(0xE000 + next(it)), text)
+        said = _apply(text, pairs)
+        return re.sub("[\ue000-\ue0ff]", lambda m: tags[ord(m.group(0)) - 0xE000], said)
+    return _apply(text, pairs)
+
+
+def _apply(text: str, pairs: list[tuple[str, str]]) -> str:
     for shown, spoken in pairs:
         if THAI_ONLY.fullmatch(shown):  # a Thai word respelt in place (เลขที่ -> เลข ที่): no pauses around it
             text = text.replace(shown, spoken)
