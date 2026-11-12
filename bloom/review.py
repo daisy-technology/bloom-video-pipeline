@@ -20,7 +20,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from . import asr, lexicon, voice
+from . import asr, lexicon, script, voice
 
 FLAG_AT = 0.15  # character error rate above which a line is worth a listen
 
@@ -255,7 +255,8 @@ def say(text: str, spec: str | None, takes: int = 1, play: bool = True, project_
         note = ""
         if asr.available():
             h = asr.transcribe(wav)
-            note = f"  heard: {h}  (CER {min(asr.cer(text, h), asr.cer(spoken, h)):.2f})"
+            shown, said = script.untagged(text), script.untagged(spoken)  # a [laughter] is heard, not read
+            note = f"  heard: {h}  (CER {min(asr.cer(shown, h), asr.cer(said, h)):.2f})"
         print(f"take {take + 1}: {voice.duration(wav):.1f} s{note}", flush=True)
         if play and shutil.which("afplay"):
             subprocess.run(["afplay", str(wav)])

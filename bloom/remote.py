@@ -356,7 +356,7 @@ def offload(a, argv: list[str]) -> None:
         out = dub.paths(a.video, a.out)[0]
         again = dub.rerun(a.video, a.srt, a.chapters, a.lexicon, a.voice, a.music, a.mood, a.sfx, a.hold, out)
     else:
-        again = cli.rerun(a.project, a.out, a.voice, a.music, a.sfx, cli.size(a.size), a.fps)
+        again = cli.rerun(a.project, a.out, a.voice, a.music, a.sfx, cli.size(a.size), a.fps, a.lufs, a.mood)
     again += f" {where}"
     voice_only = a.voice_only or not whole
     files, job, out = _job(a, argv, r, voice_only, again)

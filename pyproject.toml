@@ -9,6 +9,7 @@ dependencies = [
     "numpy>=2.2.6",
     "omnivoice>=0.2.1",
     "playwright>=1.40",
+    "toons>=0.9.0",
 ]
 
 [project.scripts]

@@ -7,3 +7,16 @@ output/*
 assets/*
 !assets/.gitkeep
 .DS_Store
+
+# skill-creator eval runs (bloom-visual-audit)
+.claude/skills/*-workspace/
+
+# audio in a project's media/ is licensed (Artlist, stock) or generated: never redistributed; the spec
+# records where it came from (prompt, generation id) so it can be fetched again
+scripts/*/media/*.mp3
+scripts/*/media/*.wav
+scripts/*/media/*.m4a
+# bench variants: remade any time with bloom-sound/scripts/revoice.py from scripts/intro-longtake
+scripts/intro-longtake-a-warm/
+scripts/intro-longtake-b-calm/
+scripts/intro-longtake-c-upbeat/

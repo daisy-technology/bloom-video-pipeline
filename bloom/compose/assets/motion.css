@@ -1,0 +1,112 @@
+/* ---- Bloom motion kit: paste into the page's <style> after impact.css and props.css (if used).
+   Every move starts at --at (seconds from the scene start, default .3s) and staggers on --i, which
+   motion.js sets for [data-split] and [data-stagger]. Each class sets `animation`, so ONE moving class
+   per element: to combine (an entrance and an exit, a cut and a slam), nest elements, a wrapper per move.
+   Nested moves add up, and these use translate / scale / rotate, which also add to a `transform`.
+   Seek-safe: keyframes only; the renderer sets every frame's time.
+
+   Set the motion language once, on :root, and use the tokens everywhere (bloom-motion, section 1). */
+/* --len (a move's length) belongs to the element that sets it: a wrapper's long push must not slow its
+   children's moves. Not inherited, no initial value, so each class's own default applies. */
+@property --len { syntax: '*'; inherits: false; }
+
+:root {
+  --e-out: cubic-bezier(.16, 1, .3, 1);     /* arrivals: fast then settle (expo out) */
+  --e-in: cubic-bezier(.7, 0, .84, 0);      /* departures: leave accelerating */
+  --e-move: cubic-bezier(.65, 0, .35, 1);   /* a thing or the camera going from A to B */
+  --e-pop: cubic-bezier(.34, 1.56, .64, 1); /* one overshoot: playful only, never on numbers */
+  --u: .4s;                                 /* the base unit: durations are multiples of it */
+  --stagger: 70ms;                          /* words 40-70 ms, lines 60-100, chars 20-40 */
+}
+
+/* ---- text. Thai stacks marks above (่ ้ ๊ ั ี) and below (ุ ู) the line: the mask gets room on both
+   sides, and the line starts far enough down that its tone marks are hidden too. */
+.rise { display: block; overflow: hidden; padding: .35em 0 .25em; margin: -.35em 0 -.25em; }  /* one line per .rise */
+.rise > * { display: block; animation: m-rise calc(var(--u) * 1.5) var(--e-out) calc(var(--at, .3s) + var(--i, 0) * 90ms) both; }
+@keyframes m-rise { from { translate: 0 165% } }
+
+.words .w, .chars .c { display: inline-block; white-space: pre;
+  animation: m-word calc(var(--u) * 1.25) var(--e-out) calc(var(--at, .3s) + var(--i, 0) * var(--stagger)) both; }
+@keyframes m-word { from { opacity: 0; translate: 0 .45em } }
+.words.pop .w { animation: m-wpop .26s var(--e-pop) calc(var(--at, .3s) + var(--i, 0) * var(--stagger)) both; }
+@keyframes m-wpop { from { opacity: 0; translate: 0 .18em; scale: .7 } }
+
+.wipe { animation: m-wipe calc(var(--u) * 1.5) var(--e-out) var(--at, .3s) both; }
+@keyframes m-wipe { from { clip-path: inset(-.3em 100% -.3em 0) } to { clip-path: inset(-.3em 0 -.3em 0) } }
+
+.blurin { animation: m-blur calc(var(--u) * 1.75) var(--e-out) var(--at, .3s) both; }  /* costly: one per frame */
+@keyframes m-blur { from { opacity: 0; filter: blur(12px) } }
+
+/* a word that lands: give it its own colour and a small scale, on the beat the voice says it */
+.hit-word { display: inline-block; animation: m-hitw .3s var(--e-out) var(--at, 1s) both; }
+@keyframes m-hitw { 0% { color: inherit; scale: 1 } 40% { scale: 1.12 } 100% { color: var(--accent, #ffd166); scale: 1 } }
+
+/* ---- lines that draw. Put pathLength="1" on each <path>, so every path takes the same dash numbers. */
+.draw, .draw path, .draw line, .draw polyline, .draw circle { stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: m-draw var(--len, .9s) var(--e-move) calc(var(--at, .3s) + var(--i, 0) * .12s) both; }
+.draw.hand, .draw.hand * { animation-timing-function: linear; }  /* a steady hand: eased long strokes lurch */
+@keyframes m-draw { to { stroke-dashoffset: 0 } }
+.fill-after { animation: m-fade var(--u) ease-out calc(var(--at, .3s) + var(--len, .9s)) both; }  /* outline first, then the fill */
+@keyframes m-fade { from { opacity: 0 } }
+
+.flow { stroke-dasharray: var(--dash, 8 8); animation: m-flow .6s linear infinite; }  /* data moving along a line */
+@keyframes m-flow { to { stroke-dashoffset: calc(var(--period, 16) * -1) } }  /* a path with pathLength="1": --dash: .02 .02; --period: .04 */
+
+/* something travelling a path: style="--path: path('M0 0 C 300 -200 600 -200 900 0')". The path is in the
+   element's containing block, and the element's own centre rides it: give it position: absolute and a size */
+.along { offset-path: var(--path); offset-rotate: var(--turn, 0deg); offset-distance: 0%;
+  animation: m-along var(--len, 1.4s) var(--e-move) var(--at, .3s) both; }
+.along.turns { --turn: auto; }
+@keyframes m-along { to { offset-distance: 100% } }
+
+/* ---- the camera on one element (a world, a stage). For several moves in a scene use motion.js data-cam. */
+.push-in { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-push var(--len, 1.6s) var(--e-move) var(--at, 0s) both; }
+@keyframes m-push { to { scale: var(--k, 1.12) } }
+.pull-out { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-pull var(--len, 1.8s) var(--e-move) var(--at, 0s) both; }
+@keyframes m-pull { from { scale: var(--k, 1.15) } }
+.drift { animation: m-drift calc(var(--scene-dur, 8s) + 1s) linear both; }  /* a slow pan across the whole scene */
+@keyframes m-drift { from { translate: calc(var(--dx, 40px) * -1) 0 } to { translate: var(--dx, 40px) 0 } }
+
+/* ---- cuts. The way in on the scene's wrapper, the way out on a wrapper inside it:
+   <section data-scene="x"><div class="in-whip"><div class="out-push" style="--fx: 50%; --fy: 30%">…
+   A hard cut needs none of them; pick one family for the video and one accent for the turn (bloom-motion, section 4). */
+.in-whip  { animation: m-whip-in .28s var(--e-out) both; }
+.out-whip { animation: m-whip-out .28s var(--e-in) calc(var(--scene-dur) - .28s) both; }
+@keyframes m-whip-in  { from { translate: 100% 0; filter: blur(14px) } }
+@keyframes m-whip-out { to   { translate: -100% 0; filter: blur(14px) } }
+.in-push  { animation: m-push-in .4s var(--e-out) both; }             /* we fly into the new scene */
+.out-push { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-push-out .35s var(--e-in) calc(var(--scene-dur) - .35s) both; }
+@keyframes m-push-in  { from { scale: 1.25; opacity: 0 } }
+@keyframes m-push-out { to   { scale: 2.4; opacity: 0 } }             /* into the screen, the window, the eye */
+.in-dip  { animation: m-fade .35s ease-out both; }                     /* time passing: a chapter break */
+.out-dip { animation: m-dip .35s ease-in calc(var(--scene-dur) - .35s) both; }
+@keyframes m-dip { to { opacity: 0 } }
+
+/* ---- texture: hand-drawn boil, re-drawn every 4 frames (every frame reads as noise) */
+.boil { animation: m-boil .4s steps(1) infinite; }
+@keyframes m-boil { 0% { translate: 0 0; rotate: 0deg } 33% { translate: .6px -.5px; rotate: .25deg } 66% { translate: -.5px .4px; rotate: -.2deg } }
+
+/* ---- endings: every video ends on a hook (bloom-story-structure, "End on a hook"; bloom-motion section 3).
+   Full-frame layers, last inside the final scene's section. Time them with --at (and --len for a fade).
+   .end-cut   black at once on the reveal: data-sfx="hit cut" (or "sting cut"); the music stops dead with it
+   .end-fade  black over --len: data-sfx="fade"; the music fades over the same span
+   .tease     the next part glimpsed but never resolved: it rises as a dark, soft silhouette and stays one
+              (set it against light: a glow, a lit doorway, a bright sky, or it disappears into a dark page)
+   .peek      the next part through a slit that opens a little and stops */
+.end-cut, .end-fade { position: absolute; inset: 0; z-index: 90; background: var(--end, #000); opacity: 0; pointer-events: none; }
+.end-cut  { animation: m-end .001s steps(1, start) var(--at, 1s) forwards;  /* black on the very frame of --at, with its sound */ }
+.end-fade { animation: m-end var(--len, .9s) ease-in var(--at, 1s) forwards; }
+@keyframes m-end { to { opacity: 1 } }
+.tease { animation: m-tease var(--len, 1.4s) var(--e-out) var(--at, .3s) both; }
+@keyframes m-tease { from { opacity: 0; scale: .92; filter: brightness(0) blur(18px) } to { opacity: 1; scale: 1; filter: brightness(.14) blur(4px) } }
+.peek { animation: m-peek var(--len, 1.2s) var(--e-move) var(--at, .3s) both; }
+@keyframes m-peek { from { clip-path: inset(50% 0 50% 0) } to { clip-path: inset(36% 0 36% 0) } }
+
+/* ---- world state (motion.js data-after / data-until): --p runs 0 → 1 once and stays 1 in later scenes,
+   --q likewise for leaving. Seek-safe without keyframes, so a long-take world keeps what happened.
+   .appear and .grow take both: one element arrives on its words (data-after) and leaves when the camera
+   has moved on (data-until). */
+.appear { opacity: calc(var(--p, 1) * (1 - var(--q, 0))); translate: 0 calc((1 - var(--p, 1)) * 40px); }
+.build  { transform-box: fill-box; transform-origin: 50% 100%; scale: 1 var(--p, 1); }  /* rises from its base: a block, a bar */
+.grow   { opacity: calc(min(1, var(--p, 1) * 3) * (1 - var(--q, 0))); scale: calc(.6 + .4 * var(--p, 1)); }
+.leave  { opacity: calc(1 - var(--q, 0)); }

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Bloom's repo rules, for every committer (a person or any agent). Enable once per clone:
+#   git config core.hooksPath .githooks
+# Then: audio in project media, generated files, a spec that differs from its approved draft, and
+# files over 10 MB are refused. Explain, don't bypass: `git commit --no-verify` skips it.
+exec uv run --no-sync python -m bloom guard

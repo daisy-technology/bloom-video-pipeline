@@ -1,0 +1,5 @@
+# Bloom's shared lexicon: how the voice says what the text shows, for every voice and every video.
+# One shown<TAB>spoken per line; the longest match wins. Add with: bloom lexicon add --shared "<shown>" "<spoken>"
+# Keep each fix's reason on a comment line above it.
+# ไฟล์ was read as "five" or ไฟล้ (OmniVoice); said as ไฟ, the same sound.
+ไฟล์	ไฟ
