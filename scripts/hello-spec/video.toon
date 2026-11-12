@@ -1,0 +1,42 @@
+video:
+  title: hello-spec
+  size: 1920x1080
+  look: iso-clean
+  motion: calm
+  voice: "omnivoice:female, young adult"
+  music: lofi
+  ending: question
+  cam: "#block 1.5"
+  pitch: "One paragraph: what this video is, who it's for, and the one thing they should leave knowing."
+cast[5]{id,kind,args}:
+  ground,tile,"at=\"-2 -2\" size=\"16 8\" color=floor"
+  file,card,"at=\"7 -1 0.6\" title=script.md text=\"## hello\\nสวัสดี นี่คือบลูม\" w=380"
+  block,box,"at=\"1 0 0\" size=\"3 2 2\" color=c1"
+  question,ask,"text=\"แล้วคุณจะเล่าเรื่องอะไร?\" sub=github.com/daisy-technology/blooms"
+  tagline,pin,"at=\"2.5 1 2.3\" text=บลูม"
+scenes[2]:
+  - id: hello
+    hold: 0
+    mood: calm
+    say: สวัสดี นี่คือบลูม เขียนบทภาษาไทยไฟล์เดียว ได้วิดีโอออกมา
+    note: "The block builds as the voice starts; on เขียนบท the camera moves to the script card, which types itself out."
+    beats[6]{on,do,what,args}:
+      start,show,block,""
+      เขียนบท,cam,file,zoom=1.3
+      เขียนบท,show,file,""
+      เขียนบท,type,file,""
+      บลูม,show,tagline,""
+      บลูม,sfx,pop,""
+  - id: end
+    hold: 1.2
+    mood: ""
+    say: แล้วคุณจะเล่าเรื่องอะไร
+    note: ""
+    beats[4]{on,do,what,args}:
+      start,cam,ground,zoom=0.95
+      start,hide,tagline,""
+      แล้ว,show,question,""
+      "-0.6",end,cut,""
+music:
+  cues[1]{on,do}:
+    end@-0.6,stop

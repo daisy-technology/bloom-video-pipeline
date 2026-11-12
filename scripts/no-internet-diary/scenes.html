@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Mali ships with the project (fonts/, OFL). */
+  @font-face { font-family: "Mali"; font-weight: 500; src: url(fonts/Mali-Medium.ttf); }
+  @font-face { font-family: "Mali"; font-weight: 700; src: url(fonts/Mali-Bold.ttf); }
+
+  :root { --ink: #2b2140; --wall: #ffe3b8; --wall2: #f6cf97; --floor: #b9835a; --note: #fff27a; --red: #e8435a; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; color: var(--ink); font-family: "Mali", sans-serif; font-weight: 700;
+               background: linear-gradient(var(--wall) 0 64%, var(--wall2) 64% 66%, var(--floor) 66%); }
+  section { position: absolute; inset: 0; }
+  svg { display: block; shape-rendering: crispEdges; overflow: visible; }
+
+  /* the room: a window whose sky follows the story, a calendar note */
+  .window { position: absolute; left: 640px; top: 200px; width: 320px; height: 280px; border: 18px solid var(--ink);
+            background: var(--sky, #9fd8ff); box-shadow: inset 0 0 0 8px #fff; }
+  .window::before, .window::after { content: ""; position: absolute; background: var(--ink); }
+  .window::before { left: 50%; top: 0; bottom: 0; width: 14px; margin-left: -7px; }
+  .window::after { top: 50%; left: 0; right: 0; height: 14px; margin-top: -7px; }
+  .night .window { --sky: #24305e; }
+  .storm .window { --sky: #6b5a7e; }
+  /* the day note: a fixed size (it never grows into what is below it), one line of label, one of big type */
+  .note { position: absolute; left: 80px; top: 200px; width: 500px; height: 250px; box-sizing: border-box; padding: 24px 30px;
+          background: var(--note); rotate: -3deg; box-shadow: 10px 10px 0 #0002; font-size: 44px; line-height: 1.3; }
+  .note b { display: block; font-size: 84px; line-height: 1.25; color: var(--red); white-space: nowrap; }
+  .src { position: absolute; left: 80px; right: 80px; top: 650px; font-size: 32px; font-weight: 500; color: #6d5a3f; }
+  .bubble { position: absolute; left: 90px; right: 90px; top: 720px; padding: 24px 30px; background: #fff; border: 8px solid var(--ink);
+            font-size: 50px; line-height: 1.3; text-align: center; animation: pop .4s steps(4) both .6s; }
+
+  .stage { position: absolute; left: 50%; width: 500px; margin-left: -250px; top: 880px; transform-origin: 50% 100%;
+           animation: pop .5s steps(5) both; }
+  .bob { animation: bob 1s steps(1) infinite; }
+  .shut { animation: blink 2.8s steps(1) infinite .9s; opacity: 0; }
+  .talk { animation: talk .3s steps(1) infinite; }
+  .x { animation: wag .6s steps(1) infinite; }
+
+  #caption { position: absolute; left: 70px; right: 70px; bottom: 160px; padding: 28px 38px; background: #fff; color: var(--ink);
+             border: 10px solid var(--ink); box-shadow: 12px 12px 0 #0003; text-align: center; font-size: 56px; line-height: 1.42; }
+  #caption:empty { display: none }
+
+  @keyframes pop   { from { transform: scale(0) } }
+  @keyframes bob   { 50% { transform: translateY(-1px) } }
+  @keyframes blink { 0% { opacity: 0 } 94% { opacity: 1 } }
+  @keyframes talk  { 0% { opacity: 1 } 50% { opacity: 0 } }
+  @keyframes wag   { 0% { opacity: 1 } 50% { opacity: 0 } }
+
+  /* ---- Bloom impact kit: paste into the page's <style>, after the .stage rule so it wins. ----
+     Every move LANDS at --at: seconds from the scene start (default .6s), set inline: style="--at: 1.2s".
+     It may use the scene's length: style="--at: calc(var(--scene-dur) - 1.4s)".
+     Pair each landing with its sound on the same element: data-sfx="hit@end" (slam, stamp),
+     "zip@.18 thud@.86" (jump), "riser sparkle@end" (charge). Only the element's FIRST animation
+     times its sounds, which is why each move lists its landing animation first.
+     Seek-safe: no timers, no randomness; the renderer sets every frame's time. */
+
+  /* slam: falls in stretched, squashes flat on contact, springs back. On the character's .stage. */
+  .slam { animation: slam-fall .38s cubic-bezier(.55, 0, 1, .45) calc(var(--at, .6s) - .38s) both,
+                     squash-settle .55s linear var(--at, .6s) forwards; transform-origin: 50% 100%; }
+  @keyframes slam-fall { from { transform: translateY(-1500px) scale(.82, 1.3) } to { transform: translateY(0) scale(1.28, .7) } }
+  @keyframes squash-settle {
+    0%   { transform: scale(1.28, .7);  animation-timing-function: cubic-bezier(.2, .8, .4, 1) }
+    30%  { transform: scale(.88, 1.14); animation-timing-function: ease-in-out }
+    55%  { transform: scale(1.06, .95); animation-timing-function: ease-in-out }
+    78%  { transform: scale(.98, 1.02) }
+    100% { transform: none }
+  }
+
+  /* jump: crouch (anticipation), stretch on take-off, hang, stretch on the fall, squash on landing.
+     Lands at --at; takes off .3s into the move. Sound: data-sfx="zip@.18 thud@.86" with --at = start + .86s. */
+  .jump { animation: jump 1s linear calc(var(--at, 1s) - .86s) both; transform-origin: 50% 100%; }
+  @keyframes jump {
+    0%   { transform: none;                                 animation-timing-function: ease-out }
+    18%  { transform: scale(1.2, .8);                       animation-timing-function: cubic-bezier(.3, 0, .2, 1) }
+    30%  { transform: translateY(-200px) scale(.84, 1.22);  animation-timing-function: cubic-bezier(.2, .6, .4, 1) }
+    52%  { transform: translateY(-330px) scale(1, 1);       animation-timing-function: cubic-bezier(.6, 0, .9, .5) }
+    86%  { transform: translateY(0) scale(.88, 1.16);       animation-timing-function: ease-out }
+    92%  { transform: scale(1.22, .78);                     animation-timing-function: ease-in-out }
+    100% { transform: none }
+  }
+
+  /* charge: shivers and gathers for --len (default .8s), then releases big at --at.
+     Sound: data-sfx="riser sparkle@end" (the riser spans the charge and stops on the release). */
+  .charge { animation: charge var(--len, .8s) linear calc(var(--at, .9s) - var(--len, .8s)) both,
+                       release .45s ease-out var(--at, .9s) forwards; transform-origin: 50% 100%; }
+  @keyframes charge {
+    0%   { transform: none }
+    25%  { transform: translateX(-4px) scale(.97, 1.03) }
+    50%  { transform: translateX(5px) scale(.95, 1.05) }
+    75%  { transform: translateX(-6px) scale(.93, 1.07) }
+    100% { transform: translateX(0) scale(.92, 1.08) }
+  }
+  @keyframes release { 0% { transform: scale(1.16, .88) } 35% { transform: scale(.95, 1.05) } 65% { transform: scale(1.03, .98) } 100% { transform: none } }
+
+  /* stamp: a headline comes down big and lands at --at with a small overshoot. Sound: data-sfx="hit@end" or "pop@end". */
+  .stamp { animation: stamp-in .28s cubic-bezier(.6, 0, 1, .6) calc(var(--at, .6s) - .28s) both,
+                      stamp-settle .4s ease-out var(--at, .6s) forwards; }
+  /* it starts only a little bigger than it lands and doesn't travel, so a full-width headline never leaves the frame
+     or rides up into the band above it (bloom-visual-audit) */
+  @keyframes stamp-in { from { opacity: 0; transform: scale(1.12) rotate(-1.5deg) } to { opacity: 1; transform: scale(.94) rotate(0) } }
+  @keyframes stamp-settle { 0% { transform: scale(.94) } 45% { transform: scale(1.03) } 100% { transform: none } }
+
+  /* shake: the camera takes the hit, decaying in under half a second. On the <section> (captions sit outside it and stay still). */
+  .shake { animation: shake .42s linear var(--at, .6s) both; }
+  @keyframes shake {
+    0% { transform: none } 8% { transform: translate(-26px, 16px) } 20% { transform: translate(22px, -18px) }
+    34% { transform: translate(-16px, 10px) } 48% { transform: translate(12px, -8px) } 64% { transform: translate(-6px, 5px) }
+    80% { transform: translate(3px, -2px) } 100% { transform: none }
+  }
+
+  /* flash: two or three white frames on the hit. <i class="flash" style="--at: 1s"></i>, last in the section. */
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none;
+           animation: flash .2s steps(3) var(--at, .6s) forwards; }
+  @keyframes flash { from { opacity: .6 } to { opacity: 0 } }
+
+  /* burst: pixel debris flying out of the impact point. <div class="burst" style="--at: 1s; --x: 540px; --y: 1500px; --c: #ff8fab"
+     data-n="10" data-r="260"></div>; the page script fills it (see fillBursts in the template). */
+  .burst { position: absolute; left: var(--x, 50%); top: var(--y, 50%); width: 0; height: 0; }
+  .burst i { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; background: var(--c, #fff); opacity: 0;
+             animation: burst .6s cubic-bezier(.15, .8, .3, 1) var(--at, .6s) forwards; }
+  @keyframes burst { 0% { opacity: 1; translate: 0 0; scale: 1 } 60% { opacity: 1 } 100% { opacity: 0; translate: var(--dx) var(--dy); scale: .4 } }
+
+  /* The mouth follows the voice: Bloom sets html[data-mouth] on every frame (0 shut, 1 half, 2 open).
+     Without it (peek.py, a plain browser) .talk keeps looping. Draw a .talk-half layer for the in-between. */
+  html[data-mouth] .talk { animation: none; opacity: 0 }
+  .talk-half { opacity: 0 }
+  html[data-mouth="2"] .talk, html[data-mouth="1"] .talk-half { opacity: 1 }
+
+  /* Breathing with the words: the sprite swells a few percent on loud syllables (--voice, 0..1). */
+  .voice-pulse { transform-origin: 50% 100%; transform: scale(calc(1 + var(--voice, 0) * .03), calc(1 + var(--voice, 0) * .05)); }
+
+  /* Faces: data-face="wow joy" on the .stage lets those face layers show, each in its own window:
+     --wow-at / --wow-end, --joy-at / --joy-end (seconds from the scene start; default the whole scene).
+     Draw each face as overlay layers with class "face face-joy" etc., painted after the eyes and mouth. */
+  .face { display: none }
+  [data-face~="joy"] .face-joy, [data-face~="wow"] .face-wow, [data-face~="sad"] .face-sad { display: inline; opacity: 0 }
+  [data-face~="joy"] .face-joy { animation: face-on 1ms linear var(--joy-at, 0s) forwards, face-off 1ms linear var(--joy-end, 999s) forwards }
+  [data-face~="wow"] .face-wow { animation: face-on 1ms linear var(--wow-at, 0s) forwards, face-off 1ms linear var(--wow-end, 999s) forwards }
+  [data-face~="sad"] .face-sad { animation: face-on 1ms linear var(--sad-at, 0s) forwards, face-off 1ms linear var(--sad-end, 999s) forwards }
+  @keyframes face-on { to { opacity: 1 } }
+  @keyframes face-off { from, to { opacity: 0 } }
+
+  /* ---- Bloom scenario props: the story acted out, not just said. Paste into the page's <style>
+     (after the impact kit), and props.js into its <script>. Each prop shows one event happening:
+     a BEFORE state, the TRIGGER, and the RESULT, landing at --at (seconds from the scene start).
+     Colours follow the page: set --p-ink, --p-paper, --p-screen, --p-bad, --p-good, --p-accent on :root.
+     Every prop is placed by its own inline left/top/width (it scales with --s, default 1).
+     Seek-safe: CSS keyframes and window.bloomSeek only. ---- */
+
+  :root { --p-ink: #1d1b2b; --p-paper: #ffffff; --p-screen: #f4f7ff; --p-bad: #e8435a; --p-good: #2dbb78; --p-accent: #3b7dd8; }
+  .prop { position: absolute; transform-origin: 50% 50%; }
+  .prop .lbl { position: absolute; left: 0; right: 0; text-align: center; font-size: 40px; line-height: 1.25; color: var(--p-ink); }
+  @keyframes p-show { from, to { opacity: 1 } }
+  @keyframes p-hide { from, to { opacity: 0 } }
+  @keyframes p-in   { from { opacity: 0; transform: scale(.4) } 70% { opacity: 1; transform: scale(1.08) } to { opacity: 1; transform: none } }
+  @keyframes p-nope { 0%, 100% { transform: none } 20% { transform: translateX(-18px) rotate(-2deg) } 40% { transform: translateX(16px) rotate(2deg) }
+                      60% { transform: translateX(-10px) } 80% { transform: translateX(6px) } }
+  @keyframes p-spin { to { transform: rotate(360deg) } }
+
+  /* phone paying by QR: the scan line sweeps, a spinner turns, then the result (data-ok for success) */
+  .qr { width: 360px; height: 640px; }
+  .qr .body { position: absolute; inset: 0; background: var(--p-ink); border-radius: 46px; padding: 22px;
+              animation: p-nope .45s linear var(--at, 2s) both; }
+  .qr .screen { position: relative; height: 100%; background: var(--p-screen); border-radius: 28px; overflow: hidden; }
+  .qr .head { position: absolute; top: 30px; left: 0; right: 0; text-align: center; font-size: 40px; color: var(--p-ink); }
+  .qr .code { position: absolute; left: 50%; top: 120px; width: 230px; height: 230px; margin-left: -115px; display: grid;
+              grid-template-columns: repeat(21, 1fr); background: #fff; padding: 10px; box-shadow: 0 0 0 4px var(--p-ink); }
+  .qr .code i { background: var(--p-ink); }
+  .qr .code i.o { background: transparent; }
+  .qr .scan { position: absolute; left: 50%; width: 270px; margin-left: -135px; top: 110px; height: 8px; background: var(--p-good);
+              box-shadow: 0 0 18px var(--p-good); opacity: 0;
+              animation: p-show 1ms linear var(--t0, .4s) forwards, qr-scan .8s ease-in-out var(--t0, .4s) infinite alternate,
+                         p-hide 1ms linear calc(var(--at, 2s) - .8s) forwards; }
+  @keyframes qr-scan { from { transform: translateY(0) } to { transform: translateY(250px) } }
+  .qr .amt { position: absolute; top: 400px; left: 0; right: 0; text-align: center; font-size: 56px; color: var(--p-ink); }
+  .qr .head, .qr .code, .qr .amt { animation: p-hide 1ms linear var(--at, 2s) forwards; }  /* the result replaces the screen */
+  .qr .spin { position: absolute; left: 50%; top: 480px; width: 70px; height: 70px; margin-left: -35px; border-radius: 50%;
+              border: 10px solid #0002; border-top-color: var(--p-accent); opacity: 0;
+              animation: p-show 1ms linear calc(var(--at, 2s) - .8s) forwards, p-spin .5s steps(8) infinite,
+                         p-hide 1ms linear var(--at, 2s) forwards; }
+  .qr .res { position: absolute; inset: 0; background: var(--p-bad); color: #fff; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; text-align: center; opacity: 0;
+             animation: p-in .35s ease-out var(--at, 2s) both; }
+  .qr[data-ok] .res { background: var(--p-good); }
+  .qr[data-ok] .body { animation: none; }
+  .qr .res b { font-size: 150px; line-height: 1.15; margin-bottom: 12px; }
+  .qr .res span { font-size: 46px; line-height: 1.3; padding: 0 20px; }
+  .qr .res small { font-size: 36px; line-height: 1.3; opacity: .9; margin-top: 18px; padding: 0 24px; }
+
+  /* card terminal: the card goes in, "connecting…", then DECLINED */
+  .pos { width: 380px; height: 560px; }
+  .pos .card { position: absolute; left: 70px; top: -40px; width: 240px; height: 150px; border-radius: 18px;
+               background: linear-gradient(135deg, var(--p-accent), #7a5cff); box-shadow: inset 0 -30px 0 #0003;
+               animation: pos-card .5s ease-out var(--t0, .4s) both; }
+  @keyframes pos-card { from { transform: translateY(-260px); opacity: 0 } to { transform: none; opacity: 1 } }
+  .pos .body { position: absolute; left: 0; right: 0; top: 70px; bottom: 0; background: var(--p-ink); border-radius: 36px; padding: 28px;
+               animation: p-nope .45s linear var(--at, 2s) both; }
+  .pos .screen { position: relative; height: 230px; background: #c9f2dc; border-radius: 12px; font-size: 40px; color: #13331f;
+                 display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 14px; }
+  .pos .screen .wait { animation: pos-blink .5s steps(1) infinite, p-hide 1ms linear var(--at, 2s) forwards; }  /* the hide last, so it wins */
+  @keyframes pos-blink { 50% { opacity: .3 } }
+  .pos .screen .no { position: absolute; inset: 0; background: var(--p-bad); color: #fff; border-radius: 12px; display: flex;
+                     flex-direction: column; align-items: center; justify-content: center; opacity: 0; animation: p-in .3s ease-out var(--at, 2s) both; }
+  .pos .screen .no b { font-size: 56px; line-height: 1.2; margin-bottom: 6px; }
+  .pos .screen .no span { font-size: 40px; }
+  .pos .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 26px; }
+  .pos .keys i { height: 46px; background: #ffffff22; border-radius: 10px; }
+
+  /* chat: a message that never leaves — clock, then red "!" */
+  .chat { width: 820px; height: 420px; }
+  .chat .msg { position: absolute; right: 0; max-width: 640px; padding: 22px 30px; border-radius: 34px 34px 8px 34px; font-size: 44px;
+               background: var(--p-accent); color: #fff; opacity: 0; }
+  .chat .msg i { font-style: normal; font-size: 30px; opacity: .85; margin-left: 16px; }
+  .chat .m1 { top: 0; animation: p-in .3s ease-out var(--t0, .4s) both; }
+  .chat .m2 { top: 150px; animation: p-in .3s ease-out calc(var(--t0, .4s) + .7s) both; }
+  .chat .m2.fail { background: #9aa3b5; animation: p-in .3s ease-out calc(var(--t0, .4s) + .7s) both, chat-fail 1ms linear var(--at, 2s) forwards; }
+  @keyframes chat-fail { to { background: var(--p-bad) } }
+  .chat .clock { animation: p-hide 1ms linear var(--at, 2s) forwards; }
+  .chat .bang { position: absolute; left: -100px; top: 50%; width: 70px; height: 70px; margin-top: -35px; border-radius: 50%;
+                background: var(--p-bad); color: #fff; font-size: 52px; line-height: 70px; text-align: center; opacity: 0;
+                animation: p-in .3s ease-out var(--at, 2s) both; }
+  .chat .note { position: absolute; right: 0; top: 290px; font-size: 36px; color: var(--p-bad); opacity: 0;
+                animation: p-in .3s ease-out calc(var(--at, 2s) + .15s) both; }
+
+  /* the sea floor: a cable with light running in it; at --at it breaks (data-ship: the repair ship sails in) */
+  .sea { width: 1000px; height: 520px; overflow: hidden; border-radius: 30px;
+         background: linear-gradient(#3aa7d8 0 22%, #1f6fa8 22%, #0e3f6e 70%, #0a2c4f); }
+  .sea .wave { position: absolute; left: -40px; right: -40px; top: 100px; height: 16px; background: #ffffff55; border-radius: 8px; }
+  .sea .floor { position: absolute; left: 0; right: 0; bottom: 0; height: 90px; background: #c9a46a; box-shadow: inset 0 14px 0 #a8834c; }
+  .sea .wire { position: absolute; left: -20px; right: -20px; bottom: 96px; height: 14px; background: #222c3a; }
+  .sea .wire::after { content: ""; position: absolute; top: 3px; width: 120px; height: 8px; background: #7ff6ff; box-shadow: 0 0 20px #7ff6ff;
+                      animation: sea-run 1.1s linear infinite, p-hide 1ms linear var(--at, 2s) forwards; }
+  @keyframes sea-run { from { left: -140px } to { left: 1040px } }
+  .sea .cut { position: absolute; left: 460px; bottom: 80px; width: 80px; height: 50px; background: #0a2c4f; opacity: 0;
+              animation: p-show 1ms linear var(--at, 2s) forwards; }
+  .sea .cut::before, .sea .cut::after { content: ""; position: absolute; top: 16px; width: 26px; height: 14px; background: var(--p-bad); }
+  .sea .cut::before { left: -8px } .sea .cut::after { right: -8px }
+  .sea .ship { position: absolute; top: 34px; left: 1040px; width: 230px; height: 90px;
+               animation: sea-ship var(--ship-len, 2s) ease-out var(--ship-at, 3s) both; }
+  .sea .ship::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: #f0f0f0;
+                       clip-path: polygon(0 0, 100% 0, 88% 100%, 8% 100%); box-shadow: inset 0 -14px 0 var(--p-bad); }
+  .sea .ship::after { content: ""; position: absolute; left: 70px; bottom: 46px; width: 90px; height: 44px; background: #fff;
+                      box-shadow: inset 0 -10px 0 #d9d9d9; }
+  @keyframes sea-ship { from { left: 1040px } to { left: 385px } }
+  .sea .sea-tag { position: absolute; left: 24px; bottom: 20px; right: 24px; font-size: 34px; letter-spacing: 0; color: #3a2a12; }  /* on the sea floor: the ship sails on the surface */
+
+  /* sun and Earth: a blast leaves the sun and hits Earth at --at (data-miss: it crosses Earth's orbit behind it) */
+  .sun { width: 1000px; height: 460px; }
+  .sun .star { position: absolute; left: -120px; top: 50%; width: 300px; height: 300px; margin-top: -150px; border-radius: 50%;
+               background: radial-gradient(#fff6a8, #ffb300 55%, #ff6a00); box-shadow: 0 0 80px #ffb300; }
+  .sun .blast { position: absolute; left: 120px; top: 50%; width: 120px; height: 120px; margin-top: -60px; border-radius: 50%;
+                background: radial-gradient(#fff9, #ff8a00aa 60%, transparent 70%); opacity: 0;
+                animation: sun-fly calc(var(--at, 2s) - var(--t0, .4s)) cubic-bezier(.4, 0, .9, .6) var(--t0, .4s) both; }
+  @keyframes sun-fly { from { opacity: 1; transform: translateX(0) scale(.6) } to { opacity: 1; transform: translateX(640px) scale(2.2) } }
+  .sun[data-miss] .blast { animation-name: sun-miss; }
+  @keyframes sun-miss { from { opacity: 1; transform: translate(0, 0) scale(.6) } to { opacity: .2; transform: translate(900px, -170px) scale(2.4) } }
+  .sun .earth { position: absolute; right: 60px; top: 50%; width: 170px; height: 170px; margin-top: -85px; border-radius: 50%;
+                background: radial-gradient(circle at 35% 35%, #7fd3ff, #2a7bd8 60%, #1b4f9a); }
+  .sun .earth::after { content: ""; position: absolute; inset: -26px; border-radius: 50%; border: 12px solid #6dffb0; opacity: 0;
+                       animation: p-in .4s ease-out var(--at, 2s) both, sun-glow .5s steps(2) calc(var(--at, 2s) + .4s) infinite; }
+  .sun[data-miss] .earth::after { animation: none; }
+  @keyframes sun-glow { 50% { border-color: #ff6dd4 } }
+  .sun .lbl { bottom: -70px; }
+
+  /* a tear-off calendar counting days (props.js counts; data-from, data-to, data-t0, data-at in seconds) */
+  .cal { width: 300px; height: 330px; }
+  .cal .pad { position: absolute; inset: 0; background: #fff; border-radius: 22px; box-shadow: 0 12px 0 #0002, 0 0 0 6px var(--p-ink); overflow: hidden; }
+  .cal .top { height: 82px; background: var(--p-bad); color: #fff; font-size: 44px; line-height: 82px; text-align: center; white-space: nowrap; overflow: hidden; }
+  .cal .num { font-size: 150px; line-height: 220px; text-align: center; color: var(--p-ink); }
+
+  /* a number counting up (props.js; data-to, data-from, data-dec, data-pre, data-suf, data-t0, data-at) */
+  .count { font-size: 120px; line-height: 1.15; white-space: nowrap; color: var(--p-ink); }
+  .count .v { display: block; }
+  .count small { display: block; font-size: 38px; line-height: 1.3; margin: 14px auto 0; }
+
+  /* a place that goes offline: an island, its signal, then a cross */
+  .offline { width: 520px; height: 420px; }
+  .offline .land { position: absolute; left: 90px; bottom: 40px; width: 340px; height: 130px; background: #5cbf6a; border-radius: 50% 50% 40% 40%;
+                   box-shadow: 0 18px 0 #e8d29a; }
+  .offline .wifi { position: absolute; left: 50%; top: 0; width: 180px; height: 180px; margin-left: -90px; }
+  .offline .wifi i { position: absolute; left: 50%; bottom: 0; border: 16px solid var(--p-good); border-color: var(--p-good) transparent transparent;
+                     border-radius: 50%; transform: translateX(-50%); animation: off-dim 1ms linear var(--at, 2s) forwards; }
+  .offline .wifi i:nth-child(1) { width: 180px; height: 180px; bottom: -90px }
+  .offline .wifi i:nth-child(2) { width: 110px; height: 110px; bottom: -55px }
+  .offline .wifi i:nth-child(3) { width: 40px; height: 40px; bottom: -20px }
+  @keyframes off-dim { to { border-top-color: #9aa3b5 } }
+  .offline .x { position: absolute; left: 50%; top: 20px; margin-left: -80px; width: 160px; height: 160px; color: var(--p-bad);
+                font-size: 200px; line-height: 160px; text-align: center; opacity: 0; animation: p-in .35s ease-out var(--at, 2s) both; }
+  .offline .lbl { bottom: -60px; }
+
+  /* a range on a bar: the band fills between data-lo and data-hi of data-max at --at */
+  .odds { width: 900px; height: 240px; }
+  .odds .track { position: absolute; left: 0; right: 0; top: 90px; height: 70px; background: #ffffff33; border-radius: 35px;
+                 box-shadow: inset 0 0 0 6px var(--p-ink); overflow: hidden; }
+  .odds .band { position: absolute; top: 0; bottom: 0; background: var(--p-bad); transform-origin: 0 50%;
+                animation: odds-fill .9s cubic-bezier(.2, .8, .3, 1) var(--at, 2s) both; }
+  @keyframes odds-fill { from { transform: scaleX(0) } }
+  .odds .tick { position: absolute; top: 0; font-size: 44px; transform: translateX(-50%); color: var(--p-ink); }
+  .odds .lbl { top: 180px; }
+
+  /* icons as files (bloom-visual/scripts/icons.py): <img class="icon" src="icons/x.svg" style="left:..; top:..; width:..; --at: 2s"> */
+  .icon { position: absolute; opacity: 0; animation: p-in .35s cubic-bezier(.2, .8, .3, 1) var(--at, 0s) both; }
+  .qr .head img { height: 46px; vertical-align: -10px; margin-right: 10px; }
+  .offline .globe { position: absolute; left: 160px; bottom: 0; width: 200px; }  /* below the signal, not under it */
+  .offline[data-icon] .land { display: none; }
+  .sun .hiticon { position: absolute; right: 70px; top: 50%; width: 150px; margin-top: -170px; opacity: 0;
+                  animation: p-in .35s ease-out calc(var(--at, 2s) + .1s) both; }
+  .sea .volc { position: absolute; left: 330px; bottom: 70px; width: 170px; opacity: 0;
+               animation: p-in .4s ease-out calc(var(--at, 2s) - .9s) both, sea-erupt .12s steps(2) calc(var(--at, 2s) - .5s) 6; }
+  @keyframes sea-erupt { 50% { translate: 6px -4px } }
+
+  /* diary layout with props: the day note and the window stay, the event happens in the room, the boy watches */
+  .src { top: 490px; left: 80px; right: 120px; }
+  .stage.small { width: 300px; margin-left: -150px; top: 1150px; }
+  :root { --p-ink: #2b2140; --p-screen: #fff; --p-bad: #e8435a; --p-good: #2dbb78; --p-accent: #3b7dd8; }
+  .prop.count small { font-size: 34px; white-space: normal; max-width: 500px; }
+  .prop.count.wide small { max-width: none; }
+  .sun.mini .lbl { font-size: 62px; bottom: -110px; }
+  .prop .lbl, .odds .tick { color: var(--ink); }
+  .odds .track { background: #fff; }
+  /* the notebook: mum's number written in, one key at a time */
+  .book { position: absolute; left: 140px; right: 140px; top: 600px; height: 330px; background: #fff; border: 8px solid var(--ink);
+          box-shadow: 12px 12px 0 #0002; background-image: repeating-linear-gradient(transparent 0 68px, #b9d4f0 68px 72px);
+          animation: pop .4s steps(4) both var(--at, .6s); }
+  .book img { position: absolute; left: 40px; top: 60px; width: 150px; }
+  .book span { position: absolute; left: 230px; top: 110px; font-size: 76px; white-space: nowrap; overflow: hidden; width: 0;
+               animation: typing 1.4s steps(12) calc(var(--at, .6s) + .5s) forwards; }
+  @keyframes typing { to { width: 12ch } }
+  .headline-end { position: absolute; left: 0; right: 0; top: 955px; text-align: center; font-size: 72px; color: var(--red); }
+
+</style>
+</head>
+<body>
+  <!-- A diary acted out in the boy's room: each entry shows what happened to him (props), landing on his words. -->
+  <section data-scene="hook" class="shake" style="--at: 3.6s">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">บันทึกของผม<b>ถ้าเน็ตหาย</b></div>
+    <div class="prop offline" style="left: 280px; top: 560px; scale: .8; --at: 3.6s" data-icon="icons/globe.svg" data-label="ทั้งโลก"></div>
+    <div class="src">ภาพจำลองสถานการณ์ อ้างอิงงานวิจัยจริง</div>
+    <div class="stage" style="top: 1000px; width: 420px; margin-left: -210px; --joy-end: 3.6s; --wow-at: 3.6s" data-face="joy wow">
+      <svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="sun">
+    <div class="window" style="--sky: #ffb347"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">หายได้ยังไง?<b>ดวงอาทิตย์</b></div>
+    <div class="src">ที่มา: NASA (2008, 2014)</div>
+    <div class="prop sun" style="left: 40px; top: 560px; scale: .8; --t0: 5s; --at: 7.7s" data-icon="icons/fire.svg" data-label="1859 · สายโทรเลขมีประกายไฟ"></div>
+    <div class="burst" style="--at: 7.7s; --x: 860px; --y: 790px; --c: #ff9f1c" data-n="12" data-r="200" ></div>
+    <div class="prop sun mini" style="left: 200px; top: 900px; scale: .55; --t0: 9.8s; --at: 12.2s; animation: p-in .4s ease-out 8.6s both"
+         data-miss data-label="2012 · พลาดไปราว 1 สัปดาห์"></div>
+    <div class="stage small" data-face="wow" style="--wow-at: 7.7s; left: 60px; margin-left: 0"><svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="cable" class="shake" style="--at: 7.6s">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">หายได้ยังไง? (2)<b>สายใต้ทะเล</b></div>
+    <div class="src">ที่มา: ITU (2024) · HGC (2024)</div>
+    <div class="prop count wide" style="left: 60px; right: 60px; top: 560px; text-align: center; font-size: 100px; color: var(--red); animation: p-in .3s ease-out .5s both"
+         data-from="0" data-to="99" data-pre="&gt;" data-suf="%" data-t0="0.6" data-at="3.4" data-label="ของเน็ตข้ามประเทศ วิ่งอยู่ในสายใต้ทะเล"></div>
+    <div class="prop sea" style="left: 40px; top: 790px; height: 330px; --at: 7.6s" data-tag="ทะเลแดง 2024 · ขาด 4 เส้น"></div>
+    <div class="burst" style="--at: 7.6s; --x: 540px; --y: 1030px; --c: var(--red)" data-n="12" data-r="220"></div>
+    <div class="stage small" data-face="wow" style="--wow-at: 7.6s"><svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="day">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">บันทึก<b>วันที่ 1</b></div>
+    <div class="src">ที่มา: ACI Worldwide (2024)</div>
+    <div class="prop qr" style="left: 90px; top: 560px; scale: .8; transform-origin: 0 0; --t0: .6s; --at: 2.6s" data-icon="icons/rice.svg"
+         data-head="ร้านข้าวมันไก่" data-amount="฿ 50.00" data-result="ทำรายการไม่สำเร็จ" data-sub="แม่สแกนจ่ายไม่ได้"></div>
+    <div class="prop count" style="left: 440px; top: 700px; font-size: 72px; animation: p-in .3s ease-out 4.2s both"
+         data-from="0" data-to="20400" data-suf=" ล้าน" data-t0="4.3" data-at="6.5" data-label="ครั้ง ที่คนไทยโอนเงินแบบนี้ ในปีเดียว (ที่ 3 ของโลก)"></div>
+    <div class="stage small" data-face="sad" style="--sad-at: 2.6s"><svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="month" class="storm">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">บันทึก<b>วันที่ 30</b></div>
+    <div class="src">ที่มา: BBC, Cloudflare (2022) · APNIC (2026)</div>
+    <div class="prop cal" style="left: 640px; top: 640px; scale: .7; transform-origin: 0 0; animation: p-in .3s ease-out 2.2s both"
+         data-head="ออฟไลน์" data-from="1" data-to="38" data-t0="2.3" data-at="4.9"></div>
+    <div class="prop sea" style="left: 40px; top: 1000px; height: 330px; --at: 6.6s; --ship-at: 7.6s; --ship-len: 2.4s" data-ship data-icon="icons/volcano.svg" data-tag="ตองกา 2022"></div>
+    <div class="burst" style="--at: 6.6s; --x: 540px; --y: 1240px; --c: var(--red)" data-n="10" data-r="200"></div>
+    <div class="stage small" style="top: 620px; left: 120px; margin-left: 0" data-face="sad"><svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="year" class="night">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">บันทึก<b>วันที่ 365</b></div>
+    <div class="src">ที่มา: National Research Council (2008)</div>
+    <div class="prop cal" style="left: 90px; top: 620px; scale: .8; transform-origin: 0 0" data-head="วันที่" data-from="1" data-to="365" data-t0="0.3" data-at="1.9"></div>
+    <div class="prop count wide" style="left: 60px; right: 60px; top: 960px; text-align: center; font-size: 78px; color: var(--red); animation: p-in .3s ease-out 7.5s both"
+         data-from="0" data-to="2000000000000" data-pre="$" data-t0="7.6" data-at="10" data-label="ความเสียหายปีแรกในอเมริกา (ประเมิน 1–2 ล้านล้านดอลลาร์) · ซ่อมอีก 4–10 ปี"></div>
+    <div class="stage small" style="top: 580px; left: 620px; margin-left: 0" data-face="sad"><svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="odds" class="night">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">มันจะเกิดไหม?<b>มีโอกาส</b></div>
+    <div class="src">ที่มา: Abdu Jyothi, SIGCOMM (2021)</div>
+    <i class="charge" style="--len: 1.6s; --at: 4.6s" data-sfx="riser"></i>
+    <div class="prop odds" style="left: 90px; top: 700px; --at: 4.6s" data-lo="1.6" data-hi="12" data-max="20" data-label="โอกาสเกิดพายุสุริยะรุนแรง ในทุก 10 ปี"></div>
+    <div class="stage small" data-face="wow" style="--wow-at: 4.6s"><svg data-sprite="kid" data-character="kid"></svg></div>
+  </section>
+
+  <section data-scene="end">
+    <div class="window"></div>
+    <div class="note stamp" style="--at: .3s" data-sfx="pop@end">หน้าสุดท้าย<b>เบอร์แม่</b></div>
+    <div class="book" style="--at: .6s"><img src="icons/mom.svg"><span data-sfx="type" style="--n: 12">081-xxx-xxxx</span></div>
+    <div class="src" style="top: 1060px; font-size: 28px">อ้างอิง: NASA · ITU · HGC · ACI Worldwide · BBC · Cloudflare · APNIC · NRC 2008 · Abdu Jyothi, SIGCOMM 2021 · ไอคอน Twemoji</div>
+    <div class="stage small" data-face="joy"><svg data-sprite="kid" data-character="kid"></svg></div>
+    <div class="headline-end stamp" style="--at: 4.1s" data-sfx="sting@end">จดไว้ก่อน เน็ตจะหาย</div>
+  </section>
+
+
+  <div id="caption"></div>
+
+<script>
+const C = { K: "#2b2140", C: "#3b7dd8", c: "#2a5ca8", H: "#3a2418", F: "#f6c49a", E: "#2b2140", P: "#f59ab0",
+            T: "#ff9f1c", t: "#d9800f", J: "#3f4f7a", S: "#ffffff", s: "#16202e", X: "#e8435a", G: "#9aa3b5" };
+
+// a boy in a cap keeping a diary of the blackout, 20 x 26, holding a phone
+const KID = [
+  "......KKKKKKKK......",
+  ".....KCCCCCCCCK.....",
+  "....KCCCCCCCCCCK....",
+  "....KCCCCCCCCCCKKK..",
+  "...KKKKKKKKKKKKKccK.",
+  "...KHHHHHHHHHHHKKK..",
+  "...KHFFFFFFFFFFHK...",
+  "...KFFFFFFFFFFFFK...",
+  "..KFFFEEFFFFEEFFFK..",
+  "..KFFFEEFFFFEEFFFK..",
+  "..KFPPFFFFFFFFPPFK..",
+  "...KFFFFFKKFFFFFK...",
+  "....KFFFFFFFFFFK....",
+  ".....KKFFFFFFKK.....",
+  "......KKFFFFKK......",
+  "....KKTTTTTTTTKK....",
+  "...KTTTTTTTTTTTTK...",
+  "..KTTKTTTTTTTTKTTK..",
+  "..KTTKTTTTTTTTKTTK..",
+  "..KTTKTTTTTTTTKTTK..",
+  "...KKKttttttttKFFK..",
+  "......KJJJJJJK.KK...",
+  "......KJJKKJJK......",
+  "......KJJKKJJK......",
+  ".....KKKKK.KKKK.....",
+  "....................",
+];
+const SHUT  = ["FF....FF", "EE....EE"];         // at (6, 8)
+const SMILE = ["KK"];                            // the resting mouth is in the map; open:
+const TALK  = ["KPPK", ".KK."];                  // at (8, 11)
+const HALF  = ["KPPK"];
+const SAD   = ["FKKF", "K..K"];                  // a frown, at (8, 11)
+const WOW   = [".KK.", "KPPK", ".KK."];          // a gasp, at (8, 11)
+const TEAR  = ["S", "S"];                        // at (13, 10)
+// the phone in his left hand, 5 x 8, its screen at (1..3, 1..5)
+const PHONE = ["KKKKK", "KsssK", "KsssK", "KsssK", "KsssK", "KsssK", "KKGKK", "KKKKK"];
+const NOSIG = [".X.", "X.X", ".X.", "...", "XXX"]; // a cross and a dead bar, at (1, 1)
+const BARS  = ["..S", ".SS", "SSS"];             // full signal, at (1, 3)
+
+function px(map, x0 = 0, y0 = 0, cls = "") {
+  let out = "";
+  map.forEach((row, y) => {
+    for (let x = 0; x < row.length;) {
+      let n = 1;
+      while (row[x + n] === row[x]) n++;
+      if (row[x] !== ".") out += `<rect x="${x0 + x}" y="${y0 + y}" width="${n}" height="1" fill="${C[row[x]]}"/>`;
+      x += n;
+    }
+  });
+  return `<g class="${cls}">${out}</g>`;
+}
+
+const kid = `<g class="bob">
+    ${px(KID)}
+    ${px(SHUT, 6, 8, "shut")}
+    ${px(SAD, 8, 11, "face face-sad")}${px(TEAR, 13, 10, "face face-sad")}
+    ${px(HALF, 8, 11, "talk-half")}${px(TALK, 8, 11, "talk")}
+    ${px(WOW, 8, 10, "face face-wow")}
+    <g transform="translate(15 15)">${px(PHONE)}${px(BARS, 1, 3, "face face-joy")}<g class="face face-sad">${px(NOSIG, 1, 1, "x")}</g></g>
+  </g>`;
+
+function fillBursts() {
+  document.querySelectorAll(".burst").forEach(b => {
+    const n = +b.dataset.n || 10, r = +b.dataset.r || 260;
+    b.innerHTML = Array.from({ length: n }, (_, k) => {
+      const arc = "up" in b.dataset ? Math.PI : 2 * Math.PI, a0 = "up" in b.dataset ? Math.PI : 0;
+      const a = a0 + ((k + 0.5) / n) * arc + (k % 2) * 0.15, d = r * (k % 3 ? 1 : 0.65);
+      return `<i style="--dx:${Math.round(Math.cos(a) * d)}px; --dy:${Math.round(Math.sin(a) * d * 0.8)}px"></i>`;
+    }).join("");
+  });
+}
+
+document.fonts.forEach(f => f.load());
+const sprites = { kid: [kid, "0 0 22 26"] };
+document.querySelectorAll("[data-sprite]").forEach(svg => {
+  const [body, box] = sprites[svg.dataset.sprite];
+  svg.setAttribute("viewBox", box);
+  svg.innerHTML = body;
+});
+fillBursts();
+// ---- Bloom scenario props: builds each prop's inside from its data attributes, and drives the
+// counting ones (a calendar, a number) through window.bloomSeek, which Bloom calls before every frame.
+// No timers, no randomness: the same frame always draws the same thing.
+(() => {
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const hash = (s, k) => { let h = 2166136261; for (const c of s + k) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+
+  function qrCells(seed) {  // a QR-looking 21 x 21 grid: three finder squares, the rest from a fixed hash
+    const finder = (x, y) => [[0, 0], [14, 0], [0, 14]].some(([fx, fy]) => {
+      const dx = x - fx, dy = y - fy;
+      if (dx < 0 || dy < 0 || dx > 6 || dy > 6) return false;
+      return dx === 0 || dy === 0 || dx === 6 || dy === 6 || (dx > 1 && dx < 5 && dy > 1 && dy < 5);
+    });
+    const inFinder = (x, y) => [[0, 0], [14, 0], [0, 14]].some(([fx, fy]) => x >= fx - 1 && x <= fx + 7 && y >= fy - 1 && y <= fy + 7);
+    let out = "";
+    for (let y = 0; y < 21; y++) for (let x = 0; x < 21; x++) {
+      const on = inFinder(x, y) ? finder(x, y) : hash(seed, x * 31 + y) % 100 < 47;
+      out += on ? "<i></i>" : '<i class="o"></i>';
+    }
+    return out;
+  }
+
+  const build = {
+    qr: el => `<div class="body"><div class="screen">
+        <div class="head">${el.dataset.icon ? `<img src="${esc(el.dataset.icon)}">` : ""}${esc(el.dataset.head || "สแกนจ่าย")}</div>
+        <div class="code">${qrCells(el.dataset.head || "qr")}</div><div class="scan"></div>
+        <div class="amt">${esc(el.dataset.amount || "฿ 50.00")}</div><div class="spin"></div>
+        <div class="res" data-sfx="${"ok" in el.dataset ? "chime" : "buzz"}"><b>${"ok" in el.dataset ? "✓" : "✕"}</b>
+          <span>${esc(el.dataset.result || ("ok" in el.dataset ? "สำเร็จ" : "ทำรายการไม่สำเร็จ"))}</span>
+          <small>${esc(el.dataset.sub || "")}</small></div></div></div>`,
+    pos: el => `<div class="card"></div><div class="body"><div class="screen">
+        <span class="wait">${esc(el.dataset.wait || "กำลังเชื่อมต่อ…")}</span>
+        <div class="no" data-sfx="buzz"><b>${esc(el.dataset.result || "DECLINED")}</b><span>${esc(el.dataset.sub || "ปฏิเสธรายการ")}</span></div></div>
+        <div class="keys">${"<i></i>".repeat(9)}</div></div>`,
+    chat: el => `<div class="msg m1">${esc(el.dataset.first || "ถึงบ้านยัง?")}<i>✓✓</i></div>
+        <div class="msg m2 fail">${esc(el.dataset.second || "โทรกลับด่วน")}<i class="clock">กำลังส่ง…</i><span class="bang" data-sfx="buzz" data-audit="spill">!</span></div>
+        <div class="note">${esc(el.dataset.result || "ส่งไม่สำเร็จ")}</div>`,
+    sea: el => `<div class="wave"></div><div class="floor"></div><div class="wire"></div>
+        ${el.dataset.icon ? `<img class="volc" src="${esc(el.dataset.icon)}">` : ""}
+        <div class="cut" data-sfx="hit"></div>${"ship" in el.dataset ? `<div class="ship" data-sfx="whoosh"></div>` : ""}
+        <div class="sea-tag">${esc(el.dataset.tag || "")}</div>`,
+    sun: el => `<div class="star"></div><div class="blast" data-sfx="${"miss" in el.dataset ? "riser whoosh@end" : "riser hit@end"}"></div><div class="earth"></div>
+        ${el.dataset.icon ? `<img class="hiticon" src="${esc(el.dataset.icon)}">` : ""}
+        <div class="lbl">${esc(el.dataset.label || "")}</div>`,
+    cal: el => `<div class="pad"><div class="top">${esc(el.dataset.head || "วันที่")}</div><div class="num">${esc(el.dataset.from || 1)}</div></div>`,
+    count: el => `<span class="v">${esc(el.dataset.pre || "")}${esc(el.dataset.from || 0)}${esc(el.dataset.suf || "")}</span><small>${esc(el.dataset.label || "")}</small>`,
+    offline: el => `${el.dataset.icon ? `<img class="globe" src="${esc(el.dataset.icon)}">` : ""}<div class="land"></div><div class="wifi"><i></i><i></i><i></i></div><div class="x" data-sfx="buzz">✕</div>
+        <div class="lbl">${esc(el.dataset.label || "")}</div>`,
+    odds: el => {
+      const max = +el.dataset.max || 20, lo = +el.dataset.lo || 0, hi = +el.dataset.hi || max;
+      return `<div class="track"><div class="band" style="left:${lo / max * 100}%; width:${(hi - lo) / max * 100}%" data-sfx="hit"></div></div>
+        <div class="tick" style="left:${lo / max * 100}%">${esc(el.dataset.lotext || lo + "%")}</div>
+        <div class="tick" style="left:${hi / max * 100}%">${esc(el.dataset.hitext || hi + "%")}</div>
+        <div class="lbl">${esc(el.dataset.label || "")}</div>`;
+    },
+  };
+
+  document.querySelectorAll(".prop").forEach(el => {
+    const kind = Object.keys(build).find(k => el.classList.contains(k));
+    if (kind) el.innerHTML = build[kind](el);
+  });
+
+  // counting props: value at scene time t, eased out, formatted with thousands separators
+  const ease = p => 1 - Math.pow(1 - p, 3);
+  // a time is seconds from the scene start, "-1.5" for 1.5 s before its end, or "60%" of the scene
+  const secs = (v, dur, fallback) => {
+    if (v == null || v === "") return fallback;
+    if (v.endsWith("%")) return parseFloat(v) / 100 * dur;
+    return +v < 0 ? dur + +v : +v;
+  };
+  const at = (el, t, dur) => {
+    const t0 = secs(el.dataset.t0, dur, 0), t1 = secs(el.dataset.at, dur, t0 + 1);
+    const from = +el.dataset.from || 0, to = +el.dataset.to || 0;
+    return from + (to - from) * ease(Math.min(1, Math.max(0, (t - t0) / (t1 - t0))));
+  };
+  const fmt = (v, dec) => v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const before = window.bloomSeek;
+  window.bloomSeek = (id, t) => {
+    if (before) before(id, t);
+    const scene = document.querySelector(`[data-scene="${CSS.escape(id)}"]`);
+    if (!scene) return;
+    const dur = parseFloat(scene.style.getPropertyValue("--scene-dur")) || 6;
+    scene.querySelectorAll(".prop.cal").forEach(el => { el.querySelector(".num").textContent = Math.round(at(el, t, dur)); });
+    scene.querySelectorAll(".prop.count").forEach(el => {
+      el.querySelector(".v").textContent = (el.dataset.pre || "") + fmt(at(el, t, dur), +el.dataset.dec || 0) + (el.dataset.suf || "");
+    });
+  };
+})();
+
+</script>
+</body>
+</html>

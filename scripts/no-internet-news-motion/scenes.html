@@ -1,0 +1,1494 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<style>
+  /* Kanit ships with the project (fonts/, OFL). */
+  @font-face { font-family: "Kanit"; font-weight: 500; src: url(fonts/Kanit-Medium.ttf); }
+  @font-face { font-family: "Kanit"; font-weight: 700; src: url(fonts/Kanit-Bold.ttf); }
+
+  :root { --ink: #15151f; --red: #d7263d; --red2: #8c0f1e; --paper: #fff5f0; --gold: #ffd166; --cyan: #7ff6ff; }
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; color: #fff;
+               font-family: "Kanit", sans-serif; font-weight: 700;
+               background: radial-gradient(circle at 50% 35%, #3a0b14 0, #14070b 60%, #070306 100%); }
+  section { position: absolute; inset: 0; }
+  svg { display: block; overflow: visible; }
+  svg[data-sprite] { shape-rendering: crispEdges; }
+
+  /* ---- the broadcast frame: outside every section, so it runs on the video's clock and never jumps at a cut */
+  .bar { position: absolute; top: 70px; left: 0; right: 0; height: 110px; background: var(--red); z-index: 2;
+         display: flex; align-items: center; gap: 26px; padding-left: 50px; font-size: 64px; letter-spacing: 2px; }
+  .bar b { background: #fff; color: var(--red); padding: 0 22px; font-size: 52px; }
+  .live { width: 34px; height: 34px; background: #fff; animation: live 1s steps(1) infinite; }
+  .desk { position: absolute; left: 0; right: 0; top: 1290px; height: 220px; background: linear-gradient(#5a0f1a, #2a070c);
+          border-top: 12px solid var(--red); z-index: 2; }
+  .desk span { position: absolute; left: 0; right: 0; top: 60px; text-align: center; font-size: 56px; color: #ffd9de; letter-spacing: 8px; }
+  .ticker { position: absolute; left: 0; right: 0; top: 1510px; height: 72px; background: var(--gold); color: var(--ink);
+            overflow: hidden; font-size: 46px; line-height: 72px; white-space: nowrap; z-index: 2; }
+  /* the text twice, moved by exactly one copy per loop: the end of a loop is the same frame as its start */
+  .ticker i { position: absolute; left: 0; font-style: normal; animation: tick 16s linear infinite; }
+  .ticker i span { padding-right: 60px; }
+
+  .bob { animation: bob 1.2s steps(1) infinite; }
+  .shut { animation: blink 3.6s steps(1) infinite 1.3s; opacity: 0; }
+  .talk { animation: talk .3s steps(1) infinite; }
+  .noiseA { animation: wag .16s steps(1) infinite; }
+  .noiseB { animation: wag2 .16s steps(1) infinite; }
+
+  #caption { position: absolute; z-index: 3; left: 60px; right: 60px; bottom: 150px; padding: 26px 34px; background: #fff; color: var(--ink);
+             border-left: 22px solid var(--red); text-align: center; font-size: 56px; line-height: 1.4; font-weight: 500; }
+  #caption:empty { display: none }
+
+  @keyframes pop   { from { transform: scale(0) } }
+  @keyframes bob   { 50% { transform: translateY(-1px) } }
+  @keyframes blink { 0% { opacity: 0 } 94% { opacity: 1 } }
+  @keyframes talk  { 0% { opacity: 1 } 50% { opacity: 0 } }
+  @keyframes wag   { 0% { opacity: 1 } 50% { opacity: 0 } }
+  @keyframes wag2  { 0% { opacity: 0 } 50% { opacity: 1 } }
+  @keyframes live  { 50% { opacity: .2 } }
+  @keyframes tick  { to { transform: translateX(-50%) } }
+
+  /* ---- Bloom impact kit: paste into the page's <style>, after the .stage rule so it wins. ----
+     Every move LANDS at --at: seconds from the scene start (default .6s), set inline: style="--at: 1.2s".
+     It may use the scene's length: style="--at: calc(var(--scene-dur) - 1.4s)".
+     Pair each landing with its sound on the same element: data-sfx="hit@end" (slam, stamp),
+     "zip@.18 thud@.86" (jump), "riser sparkle@end" (charge). Only the element's FIRST animation
+     times its sounds, which is why each move lists its landing animation first.
+     Seek-safe: no timers, no randomness; the renderer sets every frame's time. */
+
+  /* slam: falls in stretched, squashes flat on contact, springs back. On the character's .stage. */
+  .slam { animation: slam-fall .38s cubic-bezier(.55, 0, 1, .45) calc(var(--at, .6s) - .38s) both,
+                     squash-settle .55s linear var(--at, .6s) forwards; transform-origin: 50% 100%; }
+  @keyframes slam-fall { from { transform: translateY(-1500px) scale(.82, 1.3) } to { transform: translateY(0) scale(1.28, .7) } }
+  @keyframes squash-settle {
+    0%   { transform: scale(1.28, .7);  animation-timing-function: cubic-bezier(.2, .8, .4, 1) }
+    30%  { transform: scale(.88, 1.14); animation-timing-function: ease-in-out }
+    55%  { transform: scale(1.06, .95); animation-timing-function: ease-in-out }
+    78%  { transform: scale(.98, 1.02) }
+    100% { transform: none }
+  }
+
+  /* jump: crouch (anticipation), stretch on take-off, hang, stretch on the fall, squash on landing.
+     Lands at --at; takes off .3s into the move. Sound: data-sfx="zip@.18 thud@.86" with --at = start + .86s. */
+  .jump { animation: jump 1s linear calc(var(--at, 1s) - .86s) both; transform-origin: 50% 100%; }
+  @keyframes jump {
+    0%   { transform: none;                                 animation-timing-function: ease-out }
+    18%  { transform: scale(1.2, .8);                       animation-timing-function: cubic-bezier(.3, 0, .2, 1) }
+    30%  { transform: translateY(-200px) scale(.84, 1.22);  animation-timing-function: cubic-bezier(.2, .6, .4, 1) }
+    52%  { transform: translateY(-330px) scale(1, 1);       animation-timing-function: cubic-bezier(.6, 0, .9, .5) }
+    86%  { transform: translateY(0) scale(.88, 1.16);       animation-timing-function: ease-out }
+    92%  { transform: scale(1.22, .78);                     animation-timing-function: ease-in-out }
+    100% { transform: none }
+  }
+
+  /* charge: shivers and gathers for --len (default .8s), then releases big at --at.
+     Sound: data-sfx="riser sparkle@end" (the riser spans the charge and stops on the release). */
+  .charge { animation: charge var(--len, .8s) linear calc(var(--at, .9s) - var(--len, .8s)) both,
+                       release .45s ease-out var(--at, .9s) forwards; transform-origin: 50% 100%; }
+  @keyframes charge {
+    0%   { transform: none }
+    25%  { transform: translateX(-4px) scale(.97, 1.03) }
+    50%  { transform: translateX(5px) scale(.95, 1.05) }
+    75%  { transform: translateX(-6px) scale(.93, 1.07) }
+    100% { transform: translateX(0) scale(.92, 1.08) }
+  }
+  @keyframes release { 0% { transform: scale(1.16, .88) } 35% { transform: scale(.95, 1.05) } 65% { transform: scale(1.03, .98) } 100% { transform: none } }
+
+  /* stamp: a headline comes down big and lands at --at with a small overshoot. Sound: data-sfx="hit@end" or "pop@end". */
+  .stamp { animation: stamp-in .28s cubic-bezier(.6, 0, 1, .6) calc(var(--at, .6s) - .28s) both,
+                      stamp-settle .4s ease-out var(--at, .6s) forwards; }
+  /* it starts only a little bigger than it lands and doesn't travel, so a full-width headline never leaves the frame
+     or rides up into the band above it (bloom-visual-audit) */
+  @keyframes stamp-in { from { opacity: 0; transform: scale(1.12) rotate(-1.5deg) } to { opacity: 1; transform: scale(.94) rotate(0) } }
+  @keyframes stamp-settle { 0% { transform: scale(.94) } 45% { transform: scale(1.03) } 100% { transform: none } }
+
+  /* shake: the camera takes the hit, decaying in under half a second. On the <section> (captions sit outside it and stay still). */
+  .shake { animation: shake .42s linear var(--at, .6s) both; }
+  @keyframes shake {
+    0% { transform: none } 8% { transform: translate(-26px, 16px) } 20% { transform: translate(22px, -18px) }
+    34% { transform: translate(-16px, 10px) } 48% { transform: translate(12px, -8px) } 64% { transform: translate(-6px, 5px) }
+    80% { transform: translate(3px, -2px) } 100% { transform: none }
+  }
+
+  /* flash: two or three white frames on the hit. <i class="flash" style="--at: 1s"></i>, last in the section. */
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none;
+           animation: flash .2s steps(3) var(--at, .6s) forwards; }
+  @keyframes flash { from { opacity: .6 } to { opacity: 0 } }
+
+  /* burst: pixel debris flying out of the impact point. <div class="burst" style="--at: 1s; --x: 540px; --y: 1500px; --c: #ff8fab"
+     data-n="10" data-r="260"></div>; the page script fills it (see fillBursts in the template). */
+  .burst { position: absolute; left: var(--x, 50%); top: var(--y, 50%); width: 0; height: 0; }
+  .burst i { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; background: var(--c, #fff); opacity: 0;
+             animation: burst .6s cubic-bezier(.15, .8, .3, 1) var(--at, .6s) forwards; }
+  @keyframes burst { 0% { opacity: 1; translate: 0 0; scale: 1 } 60% { opacity: 1 } 100% { opacity: 0; translate: var(--dx) var(--dy); scale: .4 } }
+
+  /* The mouth follows the voice: Bloom sets html[data-mouth] on every frame (0 shut, 1 half, 2 open).
+     Without it (peek.py, a plain browser) .talk keeps looping. Draw a .talk-half layer for the in-between. */
+  html[data-mouth] .talk { animation: none; opacity: 0 }
+  .talk-half { opacity: 0 }
+  html[data-mouth="2"] .talk, html[data-mouth="1"] .talk-half { opacity: 1 }
+
+  /* Breathing with the words: the sprite swells a few percent on loud syllables (--voice, 0..1). */
+  .voice-pulse { transform-origin: 50% 100%; transform: scale(calc(1 + var(--voice, 0) * .03), calc(1 + var(--voice, 0) * .05)); }
+
+  /* Faces: data-face="wow joy" on the .stage lets those face layers show, each in its own window:
+     --wow-at / --wow-end, --joy-at / --joy-end (seconds from the scene start; default the whole scene).
+     Draw each face as overlay layers with class "face face-joy" etc., painted after the eyes and mouth. */
+  .face { display: none }
+  [data-face~="joy"] .face-joy, [data-face~="wow"] .face-wow, [data-face~="sad"] .face-sad { display: inline; opacity: 0 }
+  [data-face~="joy"] .face-joy { animation: face-on 1ms linear var(--joy-at, 0s) forwards, face-off 1ms linear var(--joy-end, 999s) forwards }
+  [data-face~="wow"] .face-wow { animation: face-on 1ms linear var(--wow-at, 0s) forwards, face-off 1ms linear var(--wow-end, 999s) forwards }
+  [data-face~="sad"] .face-sad { animation: face-on 1ms linear var(--sad-at, 0s) forwards, face-off 1ms linear var(--sad-end, 999s) forwards }
+  @keyframes face-on { to { opacity: 1 } }
+  @keyframes face-off { from, to { opacity: 0 } }
+
+  /* ---- Bloom scenario props: the story acted out, not just said. Paste into the page's <style>
+     (after the impact kit), and props.js into its <script>. Each prop shows one event happening:
+     a BEFORE state, the TRIGGER, and the RESULT, landing at --at (seconds from the scene start).
+     Colours follow the page: set --p-ink, --p-paper, --p-screen, --p-bad, --p-good, --p-accent on :root.
+     Every prop is placed by its own inline left/top/width (it scales with --s, default 1).
+     Seek-safe: CSS keyframes and window.bloomSeek only. ---- */
+
+  :root { --p-ink: #1d1b2b; --p-paper: #ffffff; --p-screen: #f4f7ff; --p-bad: #e8435a; --p-good: #2dbb78; --p-accent: #3b7dd8; }
+  .prop { position: absolute; transform-origin: 50% 50%; }
+  .prop .lbl { position: absolute; left: 0; right: 0; text-align: center; font-size: 40px; line-height: 1.25; color: var(--p-ink); }
+  @keyframes p-show { from, to { opacity: 1 } }
+  @keyframes p-hide { from, to { opacity: 0 } }
+  @keyframes p-in   { from { opacity: 0; transform: scale(.4) } 70% { opacity: 1; transform: scale(1.08) } to { opacity: 1; transform: none } }
+  @keyframes p-nope { 0%, 100% { transform: none } 20% { transform: translateX(-18px) rotate(-2deg) } 40% { transform: translateX(16px) rotate(2deg) }
+                      60% { transform: translateX(-10px) } 80% { transform: translateX(6px) } }
+  @keyframes p-spin { to { transform: rotate(360deg) } }
+
+  /* phone paying by QR: the scan line sweeps, a spinner turns, then the result (data-ok for success) */
+  .qr { width: 360px; height: 640px; }
+  .qr .body { position: absolute; inset: 0; background: var(--p-ink); border-radius: 46px; padding: 22px;
+              animation: p-nope .45s linear var(--at, 2s) both; }
+  .qr .screen { position: relative; height: 100%; background: var(--p-screen); border-radius: 28px; overflow: hidden; }
+  .qr .head { position: absolute; top: 30px; left: 0; right: 0; text-align: center; font-size: 40px; color: var(--p-ink); }
+  .qr .code { position: absolute; left: 50%; top: 120px; width: 230px; height: 230px; margin-left: -115px; display: grid;
+              grid-template-columns: repeat(21, 1fr); background: #fff; padding: 10px; box-shadow: 0 0 0 4px var(--p-ink); }
+  .qr .code i { background: var(--p-ink); }
+  .qr .code i.o { background: transparent; }
+  .qr .scan { position: absolute; left: 50%; width: 270px; margin-left: -135px; top: 110px; height: 8px; background: var(--p-good);
+              box-shadow: 0 0 18px var(--p-good); opacity: 0;
+              animation: p-show 1ms linear var(--t0, .4s) forwards, qr-scan .8s ease-in-out var(--t0, .4s) infinite alternate,
+                         p-hide 1ms linear calc(var(--at, 2s) - .8s) forwards; }
+  @keyframes qr-scan { from { transform: translateY(0) } to { transform: translateY(250px) } }
+  .qr .amt { position: absolute; top: 400px; left: 0; right: 0; text-align: center; font-size: 56px; color: var(--p-ink); }
+  .qr .head, .qr .code, .qr .amt { animation: p-hide 1ms linear var(--at, 2s) forwards; }  /* the result replaces the screen */
+  .qr .spin { position: absolute; left: 50%; top: 480px; width: 70px; height: 70px; margin-left: -35px; border-radius: 50%;
+              border: 10px solid #0002; border-top-color: var(--p-accent); opacity: 0;
+              animation: p-show 1ms linear calc(var(--at, 2s) - .8s) forwards, p-spin .5s steps(8) infinite,
+                         p-hide 1ms linear var(--at, 2s) forwards; }
+  .qr .res { position: absolute; inset: 0; background: var(--p-bad); color: #fff; display: flex; flex-direction: column;
+             align-items: center; justify-content: center; text-align: center; opacity: 0;
+             animation: p-in .35s ease-out var(--at, 2s) both; }
+  .qr[data-ok] .res { background: var(--p-good); }
+  .qr[data-ok] .body { animation: none; }
+  .qr .res b { font-size: 150px; line-height: 1.15; margin-bottom: 12px; }
+  .qr .res span { font-size: 46px; line-height: 1.3; padding: 0 20px; }
+  .qr .res small { font-size: 36px; line-height: 1.3; opacity: .9; margin-top: 18px; padding: 0 24px; }
+  /* a tear-off calendar counting days (props.js counts; data-from, data-to, data-t0, data-at in seconds) */
+  .cal { width: 300px; height: 330px; }
+  .cal .pad { position: absolute; inset: 0; background: #fff; border-radius: 22px; box-shadow: 0 12px 0 #0002, 0 0 0 6px var(--p-ink); overflow: hidden; }
+  .cal .top { height: 82px; background: var(--p-bad); color: #fff; font-size: 44px; line-height: 82px; text-align: center; white-space: nowrap; overflow: hidden; }
+  .cal .num { font-size: 150px; line-height: 220px; text-align: center; color: var(--p-ink); }
+
+  /* a number counting up (props.js; data-to, data-from, data-dec, data-pre, data-suf, data-t0, data-at) */
+  .count { font-size: 120px; line-height: 1.15; white-space: nowrap; color: var(--p-ink); }
+  .count .v { display: block; }
+  .count small { display: block; font-size: 38px; line-height: 1.3; margin: 14px auto 0; }
+  /* icons as files (bloom-visual/scripts/icons.py): <img class="icon" src="icons/x.svg" style="left:..; top:..; width:..; --at: 2s"> */
+  .icon { position: absolute; opacity: 0; animation: p-in .35s cubic-bezier(.2, .8, .3, 1) var(--at, 0s) both; }
+  .qr .head img { height: 46px; vertical-align: -10px; margin-right: 10px; }
+  :root { --p-ink: #15151f; --p-screen: #f4f7ff; --p-bad: #d7263d; --p-good: #2dbb78; --p-accent: #3b7dd8; }
+  .prop .lbl, .odds .tick { color: #fff; }
+  .prop.count small { color: #ffd9de; font-size: 34px; white-space: normal; }
+  .src { right: 120px; }
+  .prop.count small { max-width: 500px; }
+
+/* ---- Bloom motion kit: paste into the page's <style> after impact.css and props.css (if used).
+   Every move starts at --at (seconds from the scene start, default .3s) and staggers on --i, which
+   motion.js sets for [data-split] and [data-stagger]. Each class sets `animation`, so ONE moving class
+   per element: to combine (an entrance and an exit, a cut and a slam), nest elements, a wrapper per move.
+   Nested moves add up, and these use translate / scale / rotate, which also add to a `transform`.
+   Seek-safe: keyframes only; the renderer sets every frame's time.
+
+   Set the motion language once, on :root, and use the tokens everywhere (bloom-motion, section 1). */
+:root {
+  --e-out: cubic-bezier(.16, 1, .3, 1);     /* arrivals: fast then settle (expo out) */
+  --e-in: cubic-bezier(.7, 0, .84, 0);      /* departures: leave accelerating */
+  --e-move: cubic-bezier(.65, 0, .35, 1);   /* a thing or the camera going from A to B */
+  --e-pop: cubic-bezier(.34, 1.56, .64, 1); /* one overshoot: playful only, never on numbers */
+  --u: .4s;                                 /* the base unit: durations are multiples of it */
+  --stagger: 70ms;                          /* words 40-70 ms, lines 60-100, chars 20-40 */
+}
+
+/* ---- text. Thai stacks marks above (่ ้ ๊ ั ี) and below (ุ ู) the line: the mask gets room on both
+   sides, and the line starts far enough down that its tone marks are hidden too. */
+.rise { display: block; overflow: hidden; padding: .35em 0 .25em; margin: -.35em 0 -.25em; }  /* one line per .rise */
+.rise > * { display: block; animation: m-rise calc(var(--u) * 1.5) var(--e-out) calc(var(--at, .3s) + var(--i, 0) * 90ms) both; }
+@keyframes m-rise { from { translate: 0 165% } }
+
+.words .w, .chars .c { display: inline-block; white-space: pre;
+  animation: m-word calc(var(--u) * 1.25) var(--e-out) calc(var(--at, .3s) + var(--i, 0) * var(--stagger)) both; }
+@keyframes m-word { from { opacity: 0; translate: 0 .45em } }
+.words.pop .w { animation: m-wpop .26s var(--e-pop) calc(var(--at, .3s) + var(--i, 0) * var(--stagger)) both; }
+@keyframes m-wpop { from { opacity: 0; translate: 0 .18em; scale: .7 } }
+
+.wipe { animation: m-wipe calc(var(--u) * 1.5) var(--e-out) var(--at, .3s) both; }
+@keyframes m-wipe { from { clip-path: inset(-.3em 100% -.3em 0) } to { clip-path: inset(-.3em 0 -.3em 0) } }
+
+.blurin { animation: m-blur calc(var(--u) * 1.75) var(--e-out) var(--at, .3s) both; }  /* costly: one per frame */
+@keyframes m-blur { from { opacity: 0; filter: blur(12px) } }
+
+/* a word that lands: give it its own colour and a small scale, on the beat the voice says it */
+.hit-word { display: inline-block; animation: m-hitw .3s var(--e-out) var(--at, 1s) both; }
+@keyframes m-hitw { 0% { color: inherit; scale: 1 } 40% { scale: 1.12 } 100% { color: var(--accent, #ffd166); scale: 1 } }
+
+/* ---- lines that draw. Put pathLength="1" on each <path>, so every path takes the same dash numbers. */
+.draw, .draw path, .draw line, .draw polyline, .draw circle { stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: m-draw var(--len, .9s) var(--e-move) calc(var(--at, .3s) + var(--i, 0) * .12s) both; }
+.draw.hand, .draw.hand * { animation-timing-function: linear; }  /* a steady hand: eased long strokes lurch */
+@keyframes m-draw { to { stroke-dashoffset: 0 } }
+.fill-after { animation: m-fade var(--u) ease-out calc(var(--at, .3s) + var(--len, .9s)) both; }  /* outline first, then the fill */
+@keyframes m-fade { from { opacity: 0 } }
+
+.flow { stroke-dasharray: 8 8; animation: m-flow .6s linear infinite; }  /* data moving along a line */
+@keyframes m-flow { to { stroke-dashoffset: -16 } }
+
+/* something travelling a path: style="--path: path('M0 0 C 300 -200 600 -200 900 0')" */
+.along { offset-path: var(--path); offset-rotate: var(--turn, 0deg); offset-distance: 0%;
+  animation: m-along var(--len, 1.4s) var(--e-move) var(--at, .3s) both; }
+.along.turns { --turn: auto; }
+@keyframes m-along { to { offset-distance: 100% } }
+
+/* ---- the camera on one element (a world, a stage). For several moves in a scene use motion.js data-cam. */
+.push-in { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-push var(--len, 1.6s) var(--e-move) var(--at, 0s) both; }
+@keyframes m-push { to { scale: var(--k, 1.12) } }
+.pull-out { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-pull var(--len, 1.8s) var(--e-move) var(--at, 0s) both; }
+@keyframes m-pull { from { scale: var(--k, 1.15) } }
+.drift { animation: m-drift calc(var(--scene-dur, 8s) + 1s) linear both; }  /* a slow pan across the whole scene */
+@keyframes m-drift { from { translate: calc(var(--dx, 40px) * -1) 0 } to { translate: var(--dx, 40px) 0 } }
+
+/* ---- cuts. The way in on the scene's wrapper, the way out on a wrapper inside it:
+   <section data-scene="x"><div class="in-whip"><div class="out-push" style="--fx: 50%; --fy: 30%">…
+   A hard cut needs none of them; pick one family for the video and one accent for the turn (bloom-motion, section 4). */
+.in-whip  { animation: m-whip-in .28s var(--e-out) both; }
+.out-whip { animation: m-whip-out .28s var(--e-in) calc(var(--scene-dur) - .28s) both; }
+@keyframes m-whip-in  { from { translate: 100% 0; filter: blur(14px) } }
+@keyframes m-whip-out { to   { translate: -100% 0; filter: blur(14px) } }
+.in-push  { animation: m-push-in .4s var(--e-out) both; }             /* we fly into the new scene */
+.out-push { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-push-out .35s var(--e-in) calc(var(--scene-dur) - .35s) both; }
+@keyframes m-push-in  { from { scale: 1.25; opacity: 0 } }
+@keyframes m-push-out { to   { scale: 2.4; opacity: 0 } }             /* into the screen, the window, the eye */
+.in-dip  { animation: m-fade .35s ease-out both; }                     /* time passing: a chapter break */
+.out-dip { animation: m-dip .35s ease-in calc(var(--scene-dur) - .35s) both; }
+@keyframes m-dip { to { opacity: 0 } }
+
+/* ---- texture: hand-drawn boil, re-drawn every 4 frames (every frame reads as noise) */
+.boil { animation: m-boil .4s steps(1) infinite; }
+@keyframes m-boil { 0% { translate: 0 0; rotate: 0deg } 33% { translate: .6px -.5px; rotate: .25deg } 66% { translate: -.5px .4px; rotate: -.2deg } }
+
+/* ---- endings: every video ends on a hook (bloom-story-structure, "End on a hook"; bloom-motion section 3).
+   Full-frame layers, last inside the final scene's section. Time them with --at (and --len for a fade).
+   .end-cut   black at once on the reveal: data-sfx="hit cut" (or "sting cut"); the music stops dead with it
+   .end-fade  black over --len: data-sfx="fade"; the music fades over the same span
+   .tease     the next part glimpsed but never resolved: it rises as a dark, soft silhouette and stays one
+              (set it against light: a glow, a lit doorway, a bright sky, or it disappears into a dark page)
+   .peek      the next part through a slit that opens a little and stops */
+.end-cut, .end-fade { position: absolute; inset: 0; z-index: 90; background: var(--end, #000); opacity: 0; pointer-events: none; }
+.end-cut  { animation: m-end .001s steps(1, start) var(--at, 1s) forwards;  /* black on the very frame of --at, with its sound */ }
+.end-fade { animation: m-end var(--len, .9s) ease-in var(--at, 1s) forwards; }
+@keyframes m-end { to { opacity: 1 } }
+.tease { animation: m-tease var(--len, 1.4s) var(--e-out) var(--at, .3s) both; }
+@keyframes m-tease { from { opacity: 0; scale: .92; filter: brightness(0) blur(18px) } to { opacity: 1; scale: 1; filter: brightness(.14) blur(4px) } }
+.peek { animation: m-peek var(--len, 1.2s) var(--e-move) var(--at, .3s) both; }
+@keyframes m-peek { from { clip-path: inset(50% 0 50% 0) } to { clip-path: inset(36% 0 36% 0) } }
+
+
+  /* ==== this video's motion language: energetic / breaking. Unit .2 s, 35 ms stagger, expo-out arrivals,
+     ease-in exits, overshoot only on hits (stamps, pins), never on numbers. ==== */
+  :root { --u: .2s; --stagger: 35ms; --e-out: cubic-bezier(.16, 1, .3, 1); --e-in: cubic-bezier(.7, 0, .84, 0);
+          --e-move: cubic-bezier(.65, 0, .35, 1); --e-pop: cubic-bezier(.34, 1.56, .64, 1); }
+
+  /* ---- the header band, the same in every scene: headline 196, source 300 */
+  .headline { position: absolute; top: 196px; left: 30px; right: 30px; text-align: center; font-size: 76px; line-height: 1.15;
+              text-shadow: 6px 6px 0 var(--red2); }
+  .src { position: absolute; top: 300px; left: 60px; right: 120px; text-align: center; font-size: 32px; font-weight: 500; color: #ffb3bd; }
+  .scrim { position: absolute; left: 0; right: 0; top: 180px; height: 360px; pointer-events: none;
+           background: linear-gradient(#14070bf2 0, #14070bc8 48%, #14070b00); }
+  /* the year (or the verdict) under the header, the same place in every scene that has one */
+  .chip { position: absolute; left: 0; right: 0; top: 352px; text-align: center; font-size: 130px; line-height: 1.15;
+          color: var(--gold); text-shadow: 6px 6px 0 var(--red2); font-variant-numeric: tabular-nums; }
+  .chip .rise { display: inline-block; }
+
+  /* ---- the footage window: the world the camera moves through, from under the bar to the desk */
+  .view { position: absolute; left: 0; top: 180px; width: 1080px; height: 1110px; overflow: hidden; }
+  .world, .ov, .layer, .wrap { position: absolute; left: 0; top: 0; width: 1080px; height: 1110px; }
+  .world svg.big { position: absolute; left: 0; top: 0; width: 1080px; height: 1110px; }
+
+  /* ---- the anchor at the desk, in front of the footage; reacts on the hits */
+  .anchor { position: absolute; left: 64px; top: 990px; width: 240px; }
+  .anchor.big { left: 390px; top: 930px; width: 300px; }
+  .anchor svg { width: 100%; }
+  .enter { transform-origin: 50% 100%; animation: pop .5s steps(5) both; }
+  .recoil { transform-origin: 50% 100%; animation: recoil .5s var(--e-out) var(--at, 99s) both; }
+  @keyframes recoil { 0% { transform: none } 18% { transform: translateY(12px) scale(1.06, .92) rotate(-2deg) }
+                      50% { transform: translateY(-6px) scale(.97, 1.04) rotate(1deg) } 100% { transform: none } }
+
+  /* ---- the time track (day, month, year): the red marker carries across the cuts */
+  .track3 { position: absolute; left: 320px; top: 1214px; width: 700px; height: 60px; font-size: 34px; line-height: 60px; }
+  .track3::before { content: ""; position: absolute; left: 30px; right: 30px; top: 28px; height: 4px; background: #ffffff50; }
+  .track3 span { position: absolute; top: 0; width: 200px; text-align: center; color: #ffd9de; }
+  .track3 span:nth-of-type(2) { left: 250px; } .track3 span:nth-of-type(3) { left: 500px; }
+  .track3 .mk { position: absolute; left: 0; top: 0; width: 200px; height: 60px; border-radius: 30px; background: var(--red);
+                box-shadow: 0 0 0 4px #fff; }
+  .track3 .lane { position: absolute; left: 0; top: 0; width: 200px; height: 60px; border-radius: 30px; background: #14070b; }
+  .track3 .lane:nth-of-type(2) { left: 250px; } .track3 .lane:nth-of-type(3) { left: 500px; }
+  .mk.at1 { animation: pin-in .3s var(--e-pop) .3s both; }
+  .mk.to2 { animation: mk2 .4s var(--e-move) .3s both; }
+  .mk.to3 { animation: mk3 .4s var(--e-move) .3s both; }
+  @keyframes mk2 { from { translate: 0 0 } to { translate: 250px 0 } }
+  @keyframes mk3 { from { translate: 250px 0 } to { translate: 500px 0 } }
+
+  /* ---- small moves, all on the tokens */
+  .on  { opacity: 0; animation: on 1ms linear var(--at, 0s) forwards; }
+  @keyframes on { to { opacity: 1 } }
+  .off { animation: off var(--u) var(--e-in) var(--at, 99s) forwards; }
+  @keyframes off { to { opacity: 0 } }
+  .fade-in { animation: m-fade calc(var(--u) * 2) var(--e-out) var(--at, 0s) both; }
+  .pin-in { animation: pin-in .35s var(--e-pop) var(--at, 0s) both; }
+  @keyframes pin-in { from { opacity: 0; scale: .3 } }
+  .drop { animation: drop .5s linear var(--at, 0s) both; }
+  @keyframes drop { 0% { opacity: 0; translate: 0 -240px; animation-timing-function: cubic-bezier(.55, 0, 1, .45) }
+                    55% { opacity: 1; translate: 0 0; animation-timing-function: var(--e-out) } 75% { translate: 0 -22px; animation-timing-function: ease-in }
+                    100% { translate: 0 0 } }
+  .grow-y { transform-origin: 50% 100%; animation: grow-y .3s var(--e-out) var(--at, 0s) both; }
+  @keyframes grow-y { from { scale: 1 0 } }
+  .grow-x { transform-origin: 0 50%; animation: grow-x var(--len, .6s) var(--e-out) var(--at, 0s) both; }
+  @keyframes grow-x { from { scale: 0 1 } }
+  .bump { transform-origin: 50% 100%; animation: bump .3s var(--e-out) var(--at, 99s) both; }
+  @keyframes bump { 40% { scale: 1.1 } }
+  .slide-in { animation: slide-in .35s var(--e-out) var(--at, 0s) both; }
+  @keyframes slide-in { from { translate: 560px 0; rotate: 14deg } }
+  .slide-out { animation: slide-out .25s var(--e-in) var(--at, 99s) forwards; }
+  @keyframes slide-out { to { translate: 640px 0; rotate: -10deg } }
+  .rise-in { animation: rise-in .3s var(--e-out) var(--at, 0s) both; }
+  @keyframes rise-in { from { opacity: 0; translate: 0 120px } }
+  .quake { animation: quake .12s steps(2) var(--at, 99s) var(--n, 6); }
+  @keyframes quake { 50% { translate: 6px -4px } }
+  /* a sound cue for a move drawn in JS: Bloom times data-sfx from the element's first animation */
+  .cue { position: absolute; width: 0; height: 0; animation: cue var(--len, .1s) linear var(--at, 0s) both; }
+  @keyframes cue { to { opacity: 1 } }
+  /* a drawn ✕ badge (no typed glyph: the renderer's fonts differ) */
+  .x { position: absolute; width: var(--s, 80px); height: var(--s, 80px); border-radius: 50%; background: var(--red); box-shadow: 0 0 0 6px #fff; }
+  .x::before, .x::after { content: ""; position: absolute; left: 20%; right: 20%; top: 42%; height: 16%; background: #fff; border-radius: 4px; rotate: 45deg; }
+  .x::after { rotate: -45deg; }
+
+  /* ---- hook + end: the globe and its network */
+  .globe { position: absolute; }
+  .globe > img { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .globe .rim { position: absolute; inset: -18px; border-radius: 50%; box-shadow: 0 0 70px 12px #ffd16640; }
+  .globe .dawn { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 100% 38%, #ffd16670, #ffd16600 58%); }
+  .g-img.hook { filter: brightness(.62) saturate(.9); animation: g-dark .4s var(--e-in) 3.6s forwards; }
+  @keyframes g-dark { to { filter: grayscale(1) brightness(.26) } }
+  .g-img.end { filter: grayscale(1) brightness(.26); animation: g-light 1.2s var(--e-out) .5s forwards; }
+  @keyframes g-light { to { filter: brightness(.62) saturate(.9) } }
+  .net { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .net .arc { fill: none; stroke: var(--gold); stroke-width: 4; stroke-linecap: round; }
+  .net .fl { fill: none; stroke: #fff; stroke-width: 3; stroke-dasharray: 6 18; animation: fl .6s linear infinite; }
+  @keyframes fl { to { stroke-dashoffset: -24 } }
+  .net .halo { fill: var(--gold); opacity: .3; }
+  .net .core { fill: var(--gold); }
+  .net.hook .o { animation: off .3s var(--e-in) calc(3.55s + var(--d)) forwards; }
+  .net.hook .core { animation: n-dim .1s steps(1) calc(3.6s + var(--d)) both; }
+  @keyframes n-dim { to { fill: #454a57 } }
+  .net.end .o { opacity: 0; animation: on .3s var(--e-out) calc(.5s + var(--d)) forwards; }
+  .net.end .core { fill: #454a57; animation: n-lit .1s steps(1) calc(.5s + var(--d)) both; }
+  @keyframes n-lit { to { fill: var(--gold) } }
+  .tile { position: absolute; width: 120px; height: 120px; border-radius: 28px; background: var(--paper); box-shadow: 0 8px 0 #0008; }
+  .tile > img { position: absolute; left: 18px; top: 18px; width: 84px; height: 84px; animation: t-grey .15s steps(1) var(--off) both; }
+  @keyframes t-grey { to { filter: grayscale(1) opacity(.35) } }
+  .tile > .x { right: -18px; top: -18px; --s: 58px; }
+
+  /* ---- sun */
+  .corona { transform-box: fill-box; transform-origin: center; animation: corona 2.4s var(--e-move) infinite; }
+  @keyframes corona { 50% { scale: 1.06 } }
+  .flare { transform-box: fill-box; transform-origin: 0% 50%; animation: flare 1.3s var(--e-in) 3.4s both, flare-go .25s var(--e-in) 4.7s forwards; }
+  @keyframes flare { from { scale: 0 } 60% { scale: 1 } 75% { scale: .9 } to { scale: 1.2 } }
+  @keyframes flare-go { to { scale: 0; opacity: 0 } }
+  .ring1 { transform-box: fill-box; transform-origin: center; opacity: 0; animation: ring1 .6s var(--e-out) 5.9s forwards; }
+  @keyframes ring1 { from { opacity: 1; scale: .8 } to { opacity: 0; scale: 1.6 } }
+  .bolt { opacity: 0; animation: bolt .45s linear var(--at, 7s) forwards; }
+  @keyframes bolt { 0%, 55% { opacity: 1 } 100% { opacity: 0 } }
+  .tdesk { position: absolute; left: 600px; top: 890px; width: 440px; height: 34px; background: #6b4426; box-shadow: inset 0 -10px 0 #4a2c16; }
+  .tdesk::before, .tdesk::after { content: ""; position: absolute; top: 34px; width: 26px; height: 160px; background: #4a2c16; left: 30px; }
+  .tdesk::after { left: auto; right: 30px; }
+  .tkey { position: absolute; left: 630px; top: 846px; width: 110px; height: 44px; background: #2a1a12; border-radius: 8px 8px 0 0; }
+  .tkey::after { content: ""; position: absolute; left: 30px; top: -26px; width: 60px; height: 26px; border-radius: 30px 30px 0 0; background: #b07a3c; }
+  .paper { position: absolute; left: 760px; top: 776px; width: 250px; height: 112px; background: #f6efe2; rotate: -4deg; border-radius: 6px;
+           box-shadow: 0 6px 0 #0005; animation: char .6s linear 8.0s both; }
+  @keyframes char { to { background: #4a2a18 } }
+  .morse { position: absolute; left: 20px; right: 20px; top: 44px; height: 22px; display: flex; gap: 10px; align-items: center; }
+  .morse i { display: block; height: 10px; width: 14px; background: var(--ink); border-radius: 3px; }
+  .morse i.l { width: 40px; }
+  .fire { position: absolute; left: 790px; top: 600px; width: 210px; transform-origin: 50% 100%; animation: pin-in .35s var(--e-pop) 7.95s both; }
+  .fire img { display: block; width: 100%; transform-origin: 50% 100%; animation: flick .3s steps(1) infinite; }
+  @keyframes flick { 50% { scale: 1.05 .94 } }
+  .ghost { opacity: 0; animation: on 1ms linear 12.2s forwards; }
+  .lbl1 { position: absolute; left: 700px; top: 500px; font-size: 48px; color: var(--gold); }
+
+  /* ---- sea floor (cable, month) */
+  .cab { fill: none; stroke-linecap: round; }
+  .cab.o { stroke: #141a24; stroke-width: 24; }
+  .cab.i { stroke: #3d4b5e; stroke-width: 8; }
+  .lite { fill: none; stroke: var(--cyan); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 40 60;
+          filter: drop-shadow(0 0 8px var(--cyan)); animation: lite .5s linear infinite; }
+  @keyframes lite { to { stroke-dashoffset: -100 } }
+  .pk { position: absolute; left: 0; width: 44px; height: 16px; margin-top: -8px; border-radius: 8px; background: #e9feff;
+        box-shadow: 0 0 18px 4px var(--cyan); animation: pk 3s linear calc(2.8s - var(--i) * .6s) infinite; }
+  @keyframes pk { from { translate: -700px 0 } to { translate: 1500px 0 } }
+  .snapL, .snapR { transform-box: fill-box; animation: snapL .45s var(--e-out) var(--at, 9.5s) both; transform-origin: 0% 50%; }
+  .snapR { transform-origin: 100% 50%; animation-name: snapR; }
+  @keyframes snapL { to { translate: -30px 0; rotate: 5deg } }
+  @keyframes snapR { to { translate: 30px 0; rotate: -5deg } }
+  .tag { position: absolute; padding: 0 22px; height: 64px; line-height: 64px; font-size: 40px; background: var(--red); border-radius: 12px; white-space: nowrap; }
+  .tag.ink { background: #14070bd0; box-shadow: inset 0 0 0 3px #ffffff40; }
+
+  /* ---- day */
+  .stall-sign { position: absolute; left: 600px; top: 218px; width: 420px; text-align: center; font-size: 46px; color: var(--ink); }
+  .note { position: absolute; left: 0; top: 0; width: 120px; height: 70px; }
+  .note .b { position: absolute; inset: 0; background: #4caf6a; border: 5px solid #1f5f35; border-radius: 10px;
+             animation: frz .15s steps(1) 1.6s both; }
+  @keyframes frz { to { background: #9aa3b5; border-color: #5b6272 } }
+  .note .b::after { content: "฿"; position: absolute; left: 0; right: 0; top: 4px; text-align: center; font-size: 40px; line-height: 50px; color: #1f5f35; }
+  .note .eye { position: absolute; top: -16px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 4px #1f5f35; }
+  .note .eye::after { content: ""; position: absolute; left: 9px; top: 9px; width: 10px; height: 10px; border-radius: 50%; background: var(--ink); }
+  .note .lg { position: absolute; top: 62px; width: 8px; height: 32px; background: #1f5f35; transform-origin: 50% 0; }
+  .note .lg1 { left: 34px; animation: gaitA .24s steps(1) .4s 5 both; }
+  .note .lg2 { left: 76px; animation: gaitB .24s steps(1) .4s 5 both; }
+  @keyframes gaitA { 0% { rotate: 28deg } 50% { rotate: -28deg } }
+  @keyframes gaitB { 0% { rotate: -28deg } 50% { rotate: 28deg } }
+  .note .ex { position: absolute; left: 92px; top: -86px; width: 64px; height: 64px; border-radius: 50%; background: var(--red);
+              font-size: 50px; line-height: 64px; text-align: center; box-shadow: 0 0 0 5px #fff; }
+  .route { fill: none; stroke: var(--gold); stroke-width: 8; stroke-dasharray: 14 14; stroke-linecap: round; animation: route-bad .1s steps(1) 1.9s both; }
+  @keyframes route-bad { to { stroke: var(--red) } }
+  .fly { position: absolute; left: 0; top: 0; width: 76px; height: 44px; margin: -22px 0 0 -38px; background: #4caf6a; border: 4px solid #1f5f35;
+         border-radius: 6px; opacity: 0; }
+  .board { position: absolute; left: 1260px; top: 140px; width: 960px; height: 430px; background: #1c0a10; border: 6px solid var(--gold);
+           border-radius: 26px; overflow: hidden; }
+  .board h3 { margin: 0; height: 84px; line-height: 84px; background: var(--red); text-align: center; font-size: 44px; }
+  .pod { position: absolute; width: 150px; background: #4b4f5c; box-shadow: inset 0 14px 0 #ffffff22; }
+  .pod b { position: absolute; left: 0; right: 0; top: 16px; text-align: center; font-size: 64px; line-height: 1.1; color: #c9ccd6; }
+  .pod.th { background: linear-gradient(#a51931 0 16.66%, #f4f5f8 16.66% 33.33%, #2d2a4a 33.33% 66.66%, #f4f5f8 66.66% 83.33%, #a51931 83.33%); }
+  .pod.th b { color: #fff; top: 22px; text-shadow: 0 0 10px #000, 4px 4px 0 #000; }
+  .bill { position: absolute; width: 220px; height: 96px; background: #5aa469; border: 5px solid #2e6b3c; border-radius: 8px;
+          animation: bill-fly .7s var(--e-in) var(--at) both; }
+  .bill::after { content: "$"; position: absolute; left: 0; right: 0; top: 0; text-align: center; font-size: 60px; line-height: 86px; color: #2e6b3c; }
+  @keyframes bill-fly { to { translate: var(--dx) var(--dy); rotate: var(--r); opacity: 0 } }
+
+  /* ---- month */
+  .wf path { fill: none; stroke: #2dbb78; stroke-width: 16; stroke-linecap: round; animation: wf-off .1s steps(1) 9.4s both; }
+  @keyframes wf-off { to { stroke: #6b7080 } }
+  .pin { position: absolute; width: 60px; height: 60px; border-radius: 50% 50% 50% 0; rotate: -45deg; background: var(--red); box-shadow: 0 0 0 6px #fff; }
+  .pin::after { content: ""; position: absolute; left: 20px; top: 20px; width: 20px; height: 20px; border-radius: 50%; background: #fff; }
+  .fleet { position: absolute; left: 120px; top: 170px; width: 840px; height: 630px; background: #14070be6; border: 5px solid var(--gold);
+           border-radius: 26px; }
+  .fleet .grid { position: absolute; left: 86px; top: 212px; width: 668px; display: grid; grid-template-columns: repeat(10, 56px); gap: 12px; }
+  .fleet .grid img { width: 56px; height: 56px; }
+
+  /* ---- year */
+  .lit { animation: lit-out .3s linear var(--d) forwards; }
+  @keyframes lit-out { 0% { opacity: 1 } 30% { opacity: .2 } 55% { opacity: .9 } 100% { opacity: 0 } }
+  .wire { fill: none; stroke: #8c7a86; stroke-width: 5; animation: wire-hit .6s linear 4.9s forwards; }
+  @keyframes wire-hit { from { stroke: #fff } to { stroke: #3a2a34 } }
+  .doc { position: absolute; left: 560px; top: 170px; width: 400px; height: 470px; background: var(--paper); border-radius: 14px;
+         color: var(--ink); box-shadow: 0 14px 0 #0008; }
+  .doc h4 { margin: 34px 30px 0; font-size: 38px; line-height: 1.2; }
+  .doc p { margin: 10px 30px 0; font-size: 28px; font-weight: 500; color: #5a5f6e; }
+  .doc svg { position: absolute; left: 30px; top: 250px; }
+  .doc .seal { position: absolute; left: 150px; top: 330px; padding: 4px 18px; border: 6px solid var(--red); color: var(--red); font-size: 44px;
+               rotate: -10deg; border-radius: 10px; }
+  .money { position: absolute; left: 0; right: 0; top: 190px; text-align: center; font-size: 220px; line-height: 1.1; color: var(--gold);
+           text-shadow: 8px 8px 0 var(--red2); font-variant-numeric: tabular-nums; }
+  .money span { display: inline-block; }
+  .money2 { position: absolute; left: 0; right: 0; top: 440px; text-align: center; font-size: 84px; line-height: 1.2; }
+  .money3 { position: absolute; left: 0; right: 0; top: 550px; text-align: center; font-size: 36px; font-weight: 500; color: #ffd9de; }
+
+  /* ---- the range bar: year (recovery, 0-10 years) and odds (0-20 %) share it, at the same place */
+  .bar2 { position: absolute; left: 90px; top: 700px; width: 870px; height: 80px; border-radius: 40px; background: #ffffff1c;
+          box-shadow: inset 0 0 0 5px #ffffff60; overflow: hidden; }
+  .bar2 .band { position: absolute; top: 0; bottom: 0; background: var(--red); box-shadow: inset 0 -12px 0 #0003; }
+  .bar2 .ticks { position: absolute; inset: 0; background: repeating-linear-gradient(90deg, #ffffff40 0 3px, transparent 3px var(--step)); }
+  .bnum { position: absolute; font-size: 96px; line-height: 1.1; color: var(--gold); text-shadow: 6px 6px 0 var(--red2); white-space: nowrap;
+          font-variant-numeric: tabular-nums; }
+  .tri { position: absolute; top: 656px; width: 0; height: 0; margin-left: -22px; border: 22px solid transparent; border-top: 34px solid #fff; border-bottom: 0; }
+  /* ---- the ending: the question hangs, the signal dies, black */
+  .question { position: absolute; left: 60px; right: 60px; top: 780px; text-align: center; font-size: 84px; line-height: 1.2;
+              text-shadow: 6px 6px 0 var(--red2); }
+  .globe.blink { animation: blink2 .3s steps(1) 2.9s both; }
+  @keyframes blink2 { 0% { opacity: .25 } 50% { opacity: 1 } }
+  /* the anchor's screen goes to static again just before the signal dies (a second face window on a nested element) */
+  .static-face .face-wow { display: inline; opacity: 0; animation: face-on 1ms linear 0s forwards, face-off 1ms linear .6s forwards,
+                           face-on 1ms linear 5.5s forwards; }
+  #static { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; z-index: 80; pointer-events: none; }
+</style>
+</head>
+<body>
+  <!-- data-audit: the broadcast bar is a frame (nothing to read in it); the ticker runs off both edges on purpose -->
+  <div class="bar" data-audit="safe"><b>ข่าวด่วน</b>BREAKING<div class="live"></div></div>
+  <div class="desk"><span>ข่าวบลูม · BLOOM NEWS</span></div>
+  <div class="ticker" data-audit="frame spill safe"><i><span>อินเทอร์เน็ตดับทั่วโลก • ภาพจำลองสถานการณ์ อ้างอิงงานวิจัยจริง • ข้อมูลระหว่างประเทศกว่า 99% วิ่งผ่านสายเคเบิลใต้ทะเล • โอกาสเกิดพายุสุริยะรุนแรง 1.6–12% ในทุก 10 ปี •</span><span>อินเทอร์เน็ตดับทั่วโลก • ภาพจำลองสถานการณ์ อ้างอิงงานวิจัยจริง • ข้อมูลระหว่างประเทศกว่า 99% วิ่งผ่านสายเคเบิลใต้ทะเล • โอกาสเกิดพายุสุริยะรุนแรง 1.6–12% ในทุก 10 ปี •</span></i></div>
+
+  <!-- Every scene: the same broadcast frame (bar, header band at 196/300, desk, ticker) over a footage window
+       (.view, 180-1290) where a camera (data-cam, motion.js) moves through a world bigger than the frame.
+       The worlds are marked data-audit="frame teleport": the camera carries text across the window's edge
+       (the window clips it) and cuts inside a scene are camera jumps on purpose. -->
+
+  <!-- ================================================================== HOOK -->
+  <section data-scene="hook" class="shake" style="--at: 4.0s">
+  <!-- motion: 0.0 camera already moving: close on the lit network, pulling out (k 1.4 -> 1)         · stars drift
+       0.3  headline stamps (hit) before the first word
+       1.35 "สมมติว่าเช้าพรุ่งนี้" the apps pop in around the globe (35 ms stagger), dawn on its rim
+       3.55-4.05 "ดับลง" the network goes out in a wave left->right, the globe greys     · flash, shake, anchor's face -> static
+       4.6  camera pushes onto one app                     5.2 "แอปเดียว" that app greys, ✕ (buzz)
+       5.75 "ทั้งหมด" camera pulls back, every other app ✕ in a 40 ms cascade · hold 6.3-7.0
+       cut: the dark globe becomes the sun scene's Earth, same place, same size -->
+    <div class="view">
+      <div class="world" data-audit="frame teleport" data-cam="0 1.4 640 360, 2.6 1 540 555, 3.5 1 540 555, 4.1 1.08 540 520, 4.6 1.08 540 520, 5.15 1.5 820 450, 5.75 1.5 820 450, 6.3 1 540 555">
+        <div class="layer" data-depth="0.3"><canvas data-particles="dust" data-n="110" data-seed="4" data-color="#ffffff #ffd9de #ffd166"
+             style="position:absolute; left:-300px; top:-300px; width:1700px; height:1700px"></canvas></div>
+        <div class="layer">
+          <div class="globe" style="left:240px; top:140px; width:600px; height:600px">
+            <div class="rim off" style="--at: 3.7s"></div>
+            <img class="g-img hook" src="icons/globe.svg" data-sfx="thud@end">
+            <div class="fade-in" style="--at: 1.6s; position:absolute; inset:0"><div class="dawn off" style="--at: 3.6s"></div></div>
+            <svg class="net hook" viewBox="0 0 600 600"></svg>
+          </div>
+          <div class="tile pin-in" style="left:50px;  top:170px; --at:1.35s; --off:5.95s"><img src="icons/phone.svg"><b class="x pin-in" style="--at:5.95s" data-sfx="buzz"></b></div>
+          <div class="tile pin-in" style="left:910px; top:170px; --at:1.38s; --off:6.03s"><img src="icons/rice.svg"><b class="x pin-in" style="--at:6.03s"></b></div>
+          <div class="tile pin-in" style="left:50px;  top:390px; --at:1.42s; --off:5.99s"><img src="icons/notebook.svg"><b class="x pin-in" style="--at:5.99s"></b></div>
+          <div class="tile pin-in" style="left:910px; top:390px; --at:1.45s; --off:5.2s"><img src="icons/card.svg"><b class="x pin-in" style="--at:5.2s" data-sfx="buzz"></b></div>
+          <div class="tile pin-in" style="left:50px;  top:610px; --at:1.49s; --off:6.07s"><img src="icons/mom.svg"><b class="x pin-in" style="--at:6.07s"></b></div>
+          <div class="tile pin-in" style="left:910px; top:610px; --at:1.52s; --off:6.11s"><img src="icons/ship.svg"><b class="x pin-in" style="--at:6.11s"></b></div>
+        </div>
+      </div>
+    </div>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s; font-size: 80px" data-sfx="hit@end">อินเทอร์เน็ต<span class="hit-word" style="--at: 4.0s">ดับ</span>ทั้งโลก</div>
+    <div class="on" style="--at: .6s"><div class="src wipe" style="--at: .6s">ภาพจำลองสถานการณ์ · อ้างอิงงานวิจัยจริง</div></div>
+    <div class="anchor big" data-face="wow" style="--wow-at: 4.0s; --wow-end: 5.4s"><div class="enter"><div class="recoil" style="--at: 4.0s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div></div>
+    <i class="flash" style="--at: 4.0s"></i>
+  </section>
+
+  <!-- ================================================================== SUN -->
+  <section data-scene="sun">
+  <!-- motion: 0.0 match cut: Earth fills the globe's place (k 3), the camera pulls out and pans left to the sun (1.9 s)
+       0.3  headline stamps · 0.6 source wipes   · embers off the sun all scene
+       2.5  "ปี 1859" the year rises in the chip    3.4-4.7 a flare swells on the sun (anticipation)
+       4.7  "พายุสุริยะ" the blast leaves, accelerating on an arc (riser) -> 5.9 hits Earth (hit), camera pushes on Earth
+       6.25 "สายโทรเลข" cut to the ground: telegraph wires draw on, the tape prints
+       7.0  "ประกายไฟ" sparks at every pole, bolts along the wires                  · flash, shake, anchor static
+       7.5  camera pushes to the desk · 7.95 "ลุกไหม้" the paper catches fire, embers
+       8.86 "และปี 2012" cut back to space: the year counts 1859 -> 2012, Earth moves on along its orbit
+       10.4 "พายุขนาดเดียวกัน" a second blast    12.4 it crosses the orbit where Earth was, behind it (whoosh)
+       12.4-13.1 camera pushes onto the gap, "~1 สัปดาห์" wipes in · hold
+       -0.35 the cut: we push into Earth -> the cable scene opens underwater (push through, the video's one accent) -->
+    <div class="view"><div class="wrap out-push" style="--fx: 57%; --fy: 63%" data-audit="frame spill">
+      <div class="world" data-audit="frame teleport" data-cam="0 3 700 -782, 1.9 .85 230 -820, 4.5 .9 260 -820, 5.6 .9 260 -820, 6.15 1.7 640 -830, 6.24 1.7 640 -830, 6.25 1 540 520, 7.45 1 540 560, 8.1 1.45 800 760, 8.85 1.45 800 760, 8.86 .85 230 -960, 12.35 .85 230 -960, 13.1 1.2 640 -950">
+        <div class="layer" data-depth="0.3"><canvas data-particles="dust" data-n="120" data-seed="11" data-color="#ffffff #ffd9de"
+             style="position:absolute; left:-1500px; top:-2200px; width:3200px; height:2000px"></canvas></div>
+        <div class="layer">
+          <svg class="big" viewBox="0 0 1080 1110">
+            <defs>
+              <radialGradient id="sunG"><stop offset="0" stop-color="#fff6a8"/><stop offset=".55" stop-color="#ffb300"/><stop offset="1" stop-color="#ff6a00"/></radialGradient>
+              <radialGradient id="haloG"><stop offset=".55" stop-color="#ffb300" stop-opacity=".55"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+              <radialGradient id="blastG"><stop offset="0" stop-color="#fffbe0"/><stop offset=".45" stop-color="#ffb347" stop-opacity=".9"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient>
+              <linearGradient id="skyG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#12060d"/><stop offset=".7" stop-color="#3a0b14"/><stop offset="1" stop-color="#5a1420"/></linearGradient>
+            </defs>
+            <!-- the ground in 1859 (y 0..1110) -->
+            <rect x="-300" y="-160" width="1700" height="1400" fill="url(#skyG)"/>
+            <path d="M-300 860 Q 300 790 620 850 T 1400 840 L 1400 1300 L -300 1300 Z" fill="#22090f"/>
+            <g fill="#4a2a1a">
+              <rect x="141" y="330" width="18" height="560"/><rect x="80" y="352" width="140" height="14"/>
+              <rect x="531" y="330" width="18" height="540"/><rect x="470" y="352" width="140" height="14"/>
+              <rect x="921" y="330" width="18" height="560"/><rect x="860" y="352" width="140" height="14"/>
+            </g>
+            <g class="draw" style="--at: 6.25s; --len: .6s" fill="none" stroke="#1b0d0a" stroke-width="5">
+              <path pathLength="1" d="M-300 380 Q -110 420 95 352 Q 290 412 485 352 Q 680 412 875 352 Q 1120 412 1400 380"/>
+              <path pathLength="1" d="M-300 390 Q -60 430 205 352 Q 400 412 595 352 Q 790 412 985 352 Q 1200 412 1400 392"/>
+            </g>
+            <g class="bolt" style="--at: 7.0s" fill="none" stroke="#e9feff" stroke-width="5" stroke-linejoin="round" filter="drop-shadow(0 0 8px #7ff6ff)">
+              <path d="M95 352 l 40 30 l 30 -26 l 40 34 l 34 -28 l 40 30 l 36 -24 l 40 22 l 40 -10 l 30 2"/>
+              <path d="M485 352 l 40 30 l 30 -26 l 40 34 l 34 -28 l 40 30 l 36 -24 l 40 22 l 40 -10 l 30 2"/>
+            </g>
+            <!-- space (y < -200): the sun, Earth's orbit, Earth, two blasts -->
+            <rect x="-1600" y="-2300" width="3400" height="2140" fill="#07030a"/>
+            <circle cx="-340" cy="-820" r="1040" fill="none" stroke="#ffffff30" stroke-width="3" stroke-dasharray="8 14"/>
+            <g transform="translate(-340 -820)">
+              <circle class="corona" r="330" fill="url(#haloG)"/>
+              <circle class="flare" cx="200" r="110" fill="url(#blastG)"/>
+              <circle r="230" fill="url(#sunG)"/>
+            </g>
+            <g class="ghost" transform="translate(659.7 -1106.7)"><circle r="100" fill="#ffffff10" stroke="#ffffffa0" stroke-width="4" stroke-dasharray="12 10"/></g>
+            <g class="draw" style="--at: 12.7s; --len: .45s" fill="none" stroke="var(--gold)" stroke-width="7" stroke-linecap="round">
+              <path pathLength="1" d="M682.6 -1009.5 A 1040 1040 0 0 1 695.2 -919.7"/>
+            </g>
+            <g id="earth"><image href="icons/globe.svg" x="-100" y="-100" width="200" height="200"/>
+              <circle class="ring1" r="120" fill="none" stroke="var(--gold)" stroke-width="12"/></g>
+            <circle id="b1t2" r="60" fill="url(#blastG)" opacity="0"/><circle id="b1t1" r="60" fill="url(#blastG)" opacity="0"/><circle id="b1t0" r="60" fill="url(#blastG)" opacity="0"/>
+            <circle id="b1" r="70" fill="url(#blastG)" opacity="0"/>
+            <circle id="b2t2" r="60" fill="url(#blastG)" opacity="0"/><circle id="b2t1" r="60" fill="url(#blastG)" opacity="0"/><circle id="b2t0" r="60" fill="url(#blastG)" opacity="0"/>
+            <circle id="b2" r="70" fill="url(#blastG)" opacity="0"/>
+          </svg>
+          <!-- sparks, the desk and its paper in 1859 -->
+          <div class="burst" style="--at: 7.0s; --x: 95px; --y: 352px; --c: var(--gold)" data-n="10" data-r="170"></div>
+          <div class="burst" style="--at: 7.06s; --x: 485px; --y: 352px; --c: var(--cyan)" data-n="10" data-r="170"></div>
+          <div class="burst" style="--at: 7.12s; --x: 875px; --y: 352px; --c: var(--gold)" data-n="10" data-r="170"></div>
+          <div class="tdesk"></div><div class="tkey"></div>
+          <div class="paper"><div class="morse wipe" style="--at: 6.3s; animation-duration: .7s"><i></i><i class="l"></i><i></i><i class="l"></i><i class="l"></i><i></i><i></i><i class="l"></i></div></div>
+          <canvas class="on" data-particles="embers" data-n="40" data-seed="5" data-color="#ffd166 #ff6a00 #ffb300" style="--at: 8.0s; position:absolute; left:700px; top:380px; width:380px; height:440px"></canvas>
+          <div class="fire"><img src="icons/fire.svg"></div>
+          <canvas data-particles="embers" data-n="50" data-seed="2" data-color="#ffd166 #ff6a00" style="position:absolute; left:-660px; top:-1180px; width:700px; height:720px"></canvas>
+        </div>
+      </div>
+      <div class="ov"><div class="lbl1 wipe" style="--at: 13.05s">~1 สัปดาห์</div></div>
+    </div></div>
+    <i class="cue" style="--at: 4.7s; --len: 1.2s" data-sfx="riser hit@end"></i>
+    <i class="cue" style="--at: 6.9s; --len: .1s" data-sfx="hit@end"></i>
+    <i class="cue" style="--at: 10.4s; --len: 2.0s" data-sfx="riser whoosh@end"></i>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s" data-sfx="pop@end">สาเหตุที่ 1: <span class="hit-word" style="--at: 4.7s">พายุสุริยะ</span></div>
+    <div class="src wipe" style="--at: .6s">ที่มา: NASA (2008, 2014)</div>
+    <div class="chip"><div class="off" style="--at: 12.5s"><span class="rise" style="--at: 2.5s"><span id="yr">1859</span></span></div></div>
+    <div class="anchor" data-face="wow" style="--wow-at: 7.0s; --wow-end: 8.6s"><div class="recoil" style="--at: 7.0s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div>
+    <i class="flash" style="--at: 7.0s"></i>
+  </section>
+
+  <!-- ================================================================== CABLE -->
+  <section data-scene="cable" class="shake" style="--at: 9.5s">
+  <!-- motion: 0.0 push through from Earth: we arrive at the sea surface, the camera sinks to the floor (1.8 s) · bubbles rise
+       1.3  "สายเคเบิลใต้ทะเล" the cable draws on left->right (1 s)
+       2.8  "ขนข้อมูลระหว่างประเทศ" light runs in it, packets travel        · camera pans with them (1.6 s)
+       4.6  "กว่า 99%" counts up, lands 6.0 · camera holds still while it's read
+       6.9  the count leaves; "ปี 2024" the year chip; camera swoops right along the cable (zoom .72 mid-move)
+       8.0  "สายในทะเลแดง" four cables draw on, light in them, "ทะเลแดง" tag
+       9.5  "ขาด" all four snap at once: ends fall away, light stops, debris (hit)   · flash, shake, punch-in, anchor static
+       10.45 "สี่เส้น" "4 เส้น" stamps · hold
+       cut: the broken red ends -> the frozen banknote of day 1 -->
+    <div class="view"><div class="wrap in-push">
+      <div class="world" data-audit="frame teleport" data-cam="0 1.25 540 170, 1.8 1 540 520, 2.8 1 540 520, 4.4 1 780 520, 6.8 1 780 520, 7.55 .72 1540 560, 8.3 1 2300 620, 9.4 1 2300 620, 9.6 1.15 2350 680">
+        <div class="layer">
+          <svg class="big" viewBox="0 0 1080 1110">
+            <defs>
+              <linearGradient id="waterG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#155a8a"/><stop offset=".45" stop-color="#0b3558"/><stop offset="1" stop-color="#051a2c"/></linearGradient>
+              <linearGradient id="duskG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14070b"/><stop offset="1" stop-color="#5a1420"/></linearGradient>
+            </defs>
+            <rect x="-900" y="-700" width="4400" height="830" fill="url(#duskG)"/>
+            <rect x="-900" y="120" width="4400" height="1300" fill="url(#waterG)"/>
+            <g fill="#ffffff0c"><path d="M-200 120 L 0 120 L 300 900 L 120 900 Z"/><path d="M500 120 L 640 120 L 880 900 L 760 900 Z"/><path d="M1200 120 L 1380 120 L 1680 900 L 1520 900 Z"/><path d="M2000 120 L 2140 120 L 2400 900 L 2280 900 Z"/></g>
+            <path d="M-900 120 q 40 -14 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0" fill="none" stroke="#8fd3ff80" stroke-width="6"/>
+            <path d="M-900 640 Q -500 560 -100 650 T 700 630 T 1500 660 T 2300 620 T 3100 650 L 3500 1400 L -900 1400 Z" fill="#082742"/>
+            <path d="M-900 800 Q -400 770 100 805 T 1100 795 T 2100 808 T 3100 795 L 3500 1400 L -900 1400 Z" fill="#5a4528"/>
+            <g fill="#3d2f1c"><ellipse cx="80" cy="830" rx="70" ry="26"/><ellipse cx="900" cy="826" rx="90" ry="30"/><ellipse cx="1700" cy="836" rx="60" ry="22"/><ellipse cx="2650" cy="830" rx="80" ry="28"/></g>
+            <!-- the cable we follow -->
+            <g class="draw" style="--at: 1.3s; --len: 1s"><path class="cab o" pathLength="1" d="M-700 770 C -100 772 300 768 800 770 S 1300 770 1500 770 L 1900 770"/>
+              <path class="cab i" pathLength="1" d="M-700 770 C -100 772 300 768 800 770 S 1300 770 1500 770 L 1900 770"/></g>
+            <g class="on" style="--at: 2.8s"><g class="off" style="--at: 9.5s"><path class="lite" d="M-700 770 C -100 772 300 768 800 770 S 1300 770 1500 770 L 1900 770"/></g></g>
+            <!-- the Red Sea: four cables, snapping together at x 2350 -->
+            <g class="snapL"><g class="draw" style="--at: 7.9s; --len: .6s">
+              <path class="cab o" pathLength="1" d="M1500 470 C 1700 470 1750 650 1950 650 L 2350 650"/><path class="cab o" pathLength="1" d="M1550 540 C 1750 540 1800 690 2000 690 L 2350 690"/>
+              <path class="cab o" pathLength="1" d="M1600 610 C 1800 610 1850 730 2050 730 L 2350 730"/><path class="cab o" pathLength="1" d="M1900 770 L 2350 770"/></g>
+              <g class="on" style="--at: 8.4s"><g class="off" style="--at: 9.5s">
+                <path class="lite" d="M1500 470 C 1700 470 1750 650 1950 650 L 2350 650"/><path class="lite" d="M1550 540 C 1750 540 1800 690 2000 690 L 2350 690"/>
+                <path class="lite" d="M1600 610 C 1800 610 1850 730 2050 730 L 2350 730"/><path class="lite" d="M1900 770 L 2350 770"/></g></g>
+              <g class="on" style="--at: 9.5s" fill="var(--red)"><circle cx="2350" cy="650" r="13"/><circle cx="2350" cy="690" r="13"/><circle cx="2350" cy="730" r="13"/><circle cx="2350" cy="770" r="13"/></g></g>
+            <g class="snapR"><g class="draw" style="--at: 7.9s; --len: .6s">
+              <path class="cab o" pathLength="1" d="M2350 650 L 3300 650"/><path class="cab o" pathLength="1" d="M2350 690 L 3300 690"/>
+              <path class="cab o" pathLength="1" d="M2350 730 L 3300 730"/><path class="cab o" pathLength="1" d="M2350 770 L 3300 770"/></g>
+              <g class="on" style="--at: 8.4s"><g class="off" style="--at: 9.5s" ><path class="lite" d="M2350 650 L 3300 650 M2350 690 L 3300 690 M2350 730 L 3300 730 M2350 770 L 3300 770"/></g></g>
+              <g class="on" style="--at: 9.5s" fill="var(--red)"><circle cx="2350" cy="650" r="13"/><circle cx="2350" cy="690" r="13"/><circle cx="2350" cy="730" r="13"/><circle cx="2350" cy="770" r="13"/></g></g>
+          </svg>
+          <div class="on" style="--at: 2.8s"><div class="off" style="--at: 6.9s">
+            <i class="pk" style="top:770px; --i:0"></i><i class="pk" style="top:770px; --i:1"></i><i class="pk" style="top:770px; --i:2"></i><i class="pk" style="top:770px; --i:3"></i><i class="pk" style="top:770px; --i:4"></i></div></div>
+          <canvas data-particles="embers" data-n="40" data-seed="8" data-color="#cfefff #8fd3ff" style="position:absolute; left:-700px; top:150px; width:3800px; height:700px; opacity:.5"></canvas>
+          <div class="tag wipe" style="--at: 8.4s; left: 1880px; top: 520px">ทะเลแดง</div>
+          <div class="burst" style="--at: 9.5s; --x: 2350px; --y: 690px; --c: var(--red)" data-n="12" data-r="230"></div>
+          <div class="burst" style="--at: 9.55s; --x: 2350px; --y: 740px; --c: var(--cyan)" data-n="8" data-r="160"></div>
+        </div>
+      </div>
+      <div class="ov">
+        <div class="on" style="--at: 4.6s"><div class="off" style="--at: 6.9s">
+          <div class="prop count rise-in" style="left: 60px; right: 60px; top: 190px; text-align: center; font-size: 220px; line-height: 1.1; color: var(--gold); --at: 4.6s"
+               data-from="0" data-to="99" data-suf="%" data-t0="4.8" data-at="6.0" data-label="ของข้อมูลระหว่างประเทศ วิ่งในสายใต้ทะเล"></div></div></div>
+      </div>
+    </div></div>
+    <i class="cue" style="--at: 9.5s" data-sfx="hit"></i>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s" data-sfx="pop@end">สาเหตุที่ 2: <span class="hit-word" style="--at: 1.6s">สายใต้ทะเล</span></div>
+    <div class="src wipe" style="--at: .6s">ที่มา: ITU (2024) · HGC (2024)</div>
+    <div class="chip on" style="--at: 7.1s"><div class="off" style="--at: 9.05s"><span class="rise" style="--at: 7.1s"><span>2024</span></span></div></div>
+    <div class="chip"><span class="stamp" style="--at: 9.55s; display:inline-block; color: var(--red); text-shadow: 6px 6px 0 #fff">ขาด</span>
+      <span class="stamp" style="--at: 10.45s; display:inline-block" data-sfx="pop@end">4 เส้น</span></div>
+    <div class="anchor" data-face="wow" style="--wow-at: 9.5s; --wow-end: 10.9s"><div class="recoil" style="--at: 9.5s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div>
+    <i class="flash" style="--at: 9.5s"></i>
+  </section>
+
+  <!-- ================================================================== DAY -->
+  <section data-scene="day">
+  <!-- motion: 0.0 camera on the stall, easing back (alive from frame one) · the time track pops "1 วัน" · headline stamps (hit)
+       0.4  a banknote walks out of the phone toward the cash box
+       1.6  "หยุดเดิน" it freezes mid-step, greys, "!"; 1.9 the route turns red; 2.0 the QR fails ✕ (buzz) · anchor's face falls
+       2.3  "คนไทยโอนเงินแบบทันที" camera swoops right to the board, banknotes stream into it
+       3.9  "สองหมื่นล้านครั้ง" counts, lands 5.8 · the stream stops, held
+       6.3  "อันดับสาม" the podium grows; 7.0 the Thai block bumps, "อันดับ 3 ของโลก"
+       7.9  "แค่ในสหรัฐ" swoop right: "สหรัฐ" tag · 9.2 "วันเดียว" one day pinned
+       10.1 "เจ็ดพันล้านดอลลาร์" counts to $7,000 ล้าน (lands 11.9) while the bills fly off one by one · hold
+       cut: the time track's marker slides on to "1 เดือน" -->
+    <div class="view">
+      <div class="world" data-audit="frame teleport" data-cam="0 1.12 560 470, 2.25 1 540 500, 2.85 .75 1150 520, 3.45 1 1740 520, 7.9 1 1740 520, 8.6 .8 2340 540, 9.2 1 2940 520">
+        <div class="layer">
+          <svg class="big" viewBox="0 0 1080 1110">
+            <defs><linearGradient id="streetG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a0a12"/><stop offset="1" stop-color="#4a1220"/></linearGradient></defs>
+            <rect x="-600" y="-300" width="4400" height="1500" fill="url(#streetG)"/>
+            <rect x="-600" y="880" width="4400" height="400" fill="#1a0a0e"/>
+            <!-- the chicken-rice stall -->
+            <g transform="translate(560 200)">
+              <rect x="20" y="80" width="18" height="700" fill="#5a3a22"/><rect x="442" y="80" width="18" height="700" fill="#5a3a22"/>
+              <path d="M0 0 h480 v100 h-480 z" fill="#f4f5f8"/>
+              <path d="M0 0 h60 v100 h-60 z M120 0 h60 v100 h-60 z M240 0 h60 v100 h-60 z M360 0 h60 v100 h-60 z" fill="var(--red)"/>
+              <path d="M0 100 q 30 30 60 0 q 30 30 60 0 q 30 30 60 0 q 30 30 60 0 q 30 30 60 0 q 30 30 60 0 q 30 30 60 0 q 30 30 60 0" fill="#f4f5f8"/>
+              <rect x="0" y="480" width="480" height="300" fill="#7a4a2a"/><rect x="0" y="470" width="480" height="24" fill="#9a6238"/>
+              <rect x="210" y="372" width="120" height="74" rx="8" fill="var(--gold)"/><rect x="236" y="384" width="68" height="10" fill="#7a5a10"/>
+            </g>
+            <path class="route" d="M430 520 Q 620 360 830 572"/>
+            <!-- the board's floor -->
+            <rect x="1560" y="960" width="560" height="22" fill="#3a1a22"/>
+          </svg>
+          <div class="stall-sign">ข้าวมันไก่</div>
+          <img src="icons/rice.svg" style="position:absolute; left:880px; top:548px; width:120px">
+          <div class="prop qr" style="left: 60px; top: 150px; scale: .92; --t0: .6s; --at: 2.0s" data-icon="icons/rice.svg" data-head="ร้านข้าวมันไก่" data-amount="฿ 50.00"
+               data-result="ทำรายการไม่สำเร็จ" data-sub="ไม่มีการเชื่อมต่ออินเทอร์เน็ต"></div>
+          <div class="note" id="note"><i class="lg lg1"></i><i class="lg lg2"></i><div class="b"></div>
+            <i class="eye" style="left:22px"></i><i class="eye" style="left:70px"></i><div class="ex pin-in" style="--at: 1.7s">!</div></div>
+          <!-- the board, the podium -->
+          <div class="board"><h3>โอนเงินแบบทันที · ไทย 2023</h3>
+            <div class="prop count" style="left: 0; right: 0; top: 110px; text-align: center; font-size: 130px; color: var(--gold)"
+                 data-from="0" data-to="20400" data-suf=" ล้าน" data-t0="3.9" data-at="5.8" data-label="ครั้ง ในปีเดียว"></div></div>
+          <div id="flies"></div>
+          <div class="pod grow-y" style="left:1640px; top:770px; height:190px; --at: 6.32s"><b>2</b></div>
+          <div class="pod grow-y" style="left:1790px; top:710px; height:250px; --at: 6.26s"><b>1</b></div>
+          <div class="pod grow-y" style="left:1940px; top:810px; height:150px; --at: 6.38s" data-sfx="pop"><div class="pod th bump" style="left:0; top:0; height:150px; --at: 7.0s"><b>3</b></div></div>
+          <div class="tag wipe" style="--at: 7.0s; left: 1680px; top: 600px">อันดับ 3 ของโลก</div>
+          <!-- the US: one day, $7,000 ล้าน -->
+          <div class="tag wipe" style="--at: 8.2s; left: 2470px; top: 230px">สหรัฐ</div>
+          <div class="pin-in" style="--at: 9.2s; position:absolute; left:2470px; top:330px; width:240px; height:264px">
+            <div class="prop cal" style="left:0; top:0; scale:.8; transform-origin: 0 0" data-head="เน็ตดับ" data-from="1" data-to="1"></div></div>
+          <div class="prop count" style="left: 2740px; width: 640px; top: 200px; text-align: center; font-size: 110px; color: var(--gold)"
+               data-from="0" data-to="7000" data-pre="$" data-suf=" ล้าน" data-t0="10.1" data-at="11.9" data-label="ความเสียหาย ต่อวัน (เฉพาะสหรัฐ)"></div>
+          <div class="bill" style="left:2780px; top:780px; --at: 10.2s; --dx: -300px; --dy: -700px; --r: -40deg" data-sfx="whoosh"></div>
+          <div class="bill" style="left:3010px; top:780px; --at: 10.45s; --dx: 260px; --dy: -720px; --r: 35deg"></div>
+          <div class="bill" style="left:2800px; top:690px; --at: 10.7s; --dx: -220px; --dy: -640px; --r: 50deg"></div>
+          <div class="bill" style="left:3030px; top:690px; --at: 10.95s; --dx: 300px; --dy: -660px; --r: -30deg"></div>
+          <div class="bill" style="left:2820px; top:600px; --at: 11.2s; --dx: -260px; --dy: -560px; --r: -55deg"></div>
+          <div class="bill" style="left:3050px; top:600px; --at: 11.45s; --dx: 240px; --dy: -580px; --r: 45deg"></div>
+          <div class="bill" style="left:2930px; top:510px; --at: 11.7s; --dx: 0px; --dy: -520px; --r: 20deg"></div>
+        </div>
+      </div>
+    </div>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s; color: var(--gold)" data-sfx="hit@end">1 วัน: เงิน<span class="hit-word" style="--at: 1.6s; --accent: #fff">หยุดเดิน</span></div>
+    <div class="src wipe" style="--at: .6s">ที่มา: ACI Worldwide (2024) · Abdu Jyothi, SIGCOMM (2021)</div>
+    <div class="track3"><i class="lane"></i><i class="lane"></i><i class="lane"></i><i class="mk at1"></i><span>1 วัน</span><span>1 เดือน</span><span>1 ปี</span></div>
+    <div class="anchor" data-face="sad" style="--sad-at: 2.0s"><div class="recoil" style="--at: 2.0s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div>
+  </section>
+
+  <!-- ================================================================== MONTH -->
+  <section data-scene="month" class="shake" style="--at: 7.2s">
+  <!-- motion: 0.0 the time track's marker slides 1 วัน -> 1 เดือน (carried across the cut) · camera eases down onto Tonga
+       0.3  headline stamps (hit)
+       2.4  "ตองกา" a pin drops on the island, its tag wipes in · 3.8 "2022" lands in the tag
+       4.6  "ภูเขาไฟใต้ทะเล" camera sinks under the surface to the volcano; it quakes, 5.5 erupts (embers)
+       7.2  "ตัดสายเคเบิล" the only cable snaps, light stops (hit)     · flash, shake, punch-in
+       8.4  camera rises back to the island · 9.4 "ขาดการติดต่อ" its signal greys, ✕ (buzz) · anchor's face falls
+       10.3 "ห้าสัปดาห์" the offline calendar pins in and counts to 38 (lands 11.6), "≈ 5 สัปดาห์"
+       11.9 "เพราะทั้งโลก" camera pulls out · 12.75 "เรือซ่อมสายเคเบิล" the fleet panel rises, 60 ships pop in (20 ms each)
+       while "~60 ลำ" counts, lands 14.8 · hold -->
+    <div class="view">
+      <div class="world" data-audit="frame teleport" data-cam="0 1.3 760 140, 1.6 1.1 700 200, 4.6 1.1 700 200, 5.4 1 360 720, 6.95 1 400 760, 7.2 1.15 480 880, 8.4 1.15 480 880, 9.3 1.1 700 200, 11.9 1.1 700 200, 12.8 .75 500 340">
+        <div class="layer">
+          <svg class="big" viewBox="0 0 1080 1110">
+            <defs>
+              <linearGradient id="waterM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#155a8a"/><stop offset=".45" stop-color="#0b3558"/><stop offset="1" stop-color="#051a2c"/></linearGradient>
+              <linearGradient id="duskM" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#14070b"/><stop offset="1" stop-color="#6a1a26"/></linearGradient>
+            </defs>
+            <rect x="-1500" y="-900" width="3600" height="1240" fill="url(#duskM)"/>
+            <rect x="-1500" y="330" width="3600" height="1200" fill="url(#waterM)"/>
+            <path d="M-1500 330 q 40 -14 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0 t 80 0" fill="none" stroke="#8fd3ff80" stroke-width="6"/>
+            <path d="M-1500 1000 Q -900 980 -300 1004 T 900 995 T 2100 1000 L 2100 1600 L -1500 1600 Z" fill="#5a4528"/>
+            <!-- the only cable: from the left edge of the world to the island -->
+            <path class="cab o" d="M-1500 990 L 150 990 C 330 990 400 998 480 992"/><path class="cab i" d="M-1500 990 L 150 990 C 330 990 400 998 480 992"/>
+            <g class="snapR" style="--at: 7.2s"><path class="cab o" d="M480 992 C 700 960 760 700 790 380"/><path class="cab i" d="M480 992 C 700 960 760 700 790 380"/>
+              <g class="on" style="--at: 7.2s"><circle cx="480" cy="992" r="13" fill="var(--red)"/></g></g>
+            <g class="off" style="--at: 7.2s"><path class="lite" d="M-1500 990 L 150 990 C 330 990 400 998 480 992 C 700 960 760 700 790 380"/></g>
+            <g class="on" style="--at: 7.2s"><circle cx="480" cy="992" r="13" fill="var(--red)"/></g>
+            <!-- the island's signal -->
+            <g class="wf" transform="translate(800 40)"><path d="M-90 0 A 90 90 0 0 1 90 0"/><path d="M-55 22 A 58 58 0 0 1 55 22"/><path d="M-20 44 A 22 22 0 0 1 20 44"/></g>
+          </svg>
+          <img src="icons/island.svg" style="position:absolute; left:650px; top:86px; width:300px">
+          <div class="x pin-in" style="--at: 9.5s; left: 750px; top: -20px; --s: 100px" data-sfx="buzz"></div>
+          <div class="drop" style="--at: 2.4s; position:absolute; left:668px; top:196px"><div class="pin"></div></div>
+          <div class="off" style="--at: 4.6s"><div class="tag wipe" style="--at: 2.6s; left: 360px; top: 120px">ตองกา · <span class="hit-word" style="--at: 3.8s">2022</span></div></div>
+          <div class="quake" style="--at: 5.0s; --n: 10; position:absolute; left:160px; top:770px; width:260px">
+            <img class="pin-in" src="icons/volcano.svg" style="--at: 4.9s; display:block; width:100%" data-sfx="thud"></div>
+          <canvas class="on" data-particles="embers" data-n="70" data-seed="6" data-color="#ffd166 #ff6a00 #d7263d #5a5f6e" style="--at: 5.5s; position:absolute; left:170px; top:380px; width:240px; height:440px"></canvas>
+          <div class="burst" style="--at: 7.2s; --x: 480px; --y: 990px; --c: var(--red)" data-n="12" data-r="220"></div>
+          <div class="burst" style="--at: 5.5s; --x: 290px; --y: 790px; --c: var(--gold)" data-n="10" data-r="200" data-up></div>
+        </div>
+      </div>
+      <div class="ov">
+        <div class="pin-in" style="--at: 10.3s; position:absolute; left:80px; top:400px; width:240px; height:264px"><div class="off" style="--at: 12.55s; position:absolute; inset:0">
+          <div class="prop cal" style="left:0; top:0; scale:.8; transform-origin: 0 0" data-head="ออฟไลน์" data-from="1" data-to="38" data-t0="10.4" data-at="11.6"></div>
+          <div class="wipe" style="--at: 11.65s; position:absolute; left:-20px; top:280px; width:300px; text-align:center; font-size:40px; color: var(--gold)">≈ 5 สัปดาห์</div></div></div>
+        <div class="fleet rise-in" style="--at: 12.75s">
+          <div class="prop count" style="left: 0; right: 0; top: 10px; text-align: center; font-size: 110px; color: var(--gold)"
+               data-from="0" data-to="60" data-pre="~" data-suf=" ลำ" data-t0="13.0" data-at="14.8" data-label="เรือซ่อมสายเคเบิล ทั้งโลก"></div>
+          <div class="grid" id="fleet"></div></div>
+      </div>
+    </div>
+    <i class="cue" style="--at: 7.2s" data-sfx="hit"></i>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s; color: var(--gold)" data-sfx="hit@end">1 เดือน: ประเทศถูก<span class="hit-word" style="--at: 9.4s; --accent: #fff">ตัดขาด</span></div>
+    <div class="src wipe" style="--at: .6s">ที่มา: BBC, Cloudflare (2022) · APNIC (2026)</div>
+    <div class="track3"><i class="lane"></i><i class="lane"></i><i class="lane"></i><i class="mk to2"></i><span>1 วัน</span><span>1 เดือน</span><span>1 ปี</span></div>
+    <div class="anchor" data-face="sad" style="--sad-at: 9.4s"><div class="recoil" style="--at: 7.2s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div>
+    <i class="flash" style="--at: 7.2s"></i>
+  </section>
+
+  <!-- ================================================================== YEAR -->
+  <section data-scene="year" class="shake" style="--at: 8.55s">
+  <!-- motion: 0.0 the marker slides 1 เดือน -> 1 ปี · camera glides left over the lit city · the calendar counts days 1 -> 365 (to 7.6)
+       0.3  headline stamps (hit)
+       1.5  "รายงานของสภาวิจัยแห่งชาติสหรัฐ" the report slides in, its lines draw, 2.8 the NRC 2008 seal stamps; 3.7 it slides out
+       4.3  "พายุสุริยะรุนแรง" a blast streaks in from the sun (riser) and hits the grid at 4.9: wires flash, sparks,
+            the city goes dark in a wave out from the strike            · flash, punch-in
+       5.8  "ความเสียหายในสหรัฐ" camera pulls back over the dark city
+       7.95 "หนึ่ง" "$1" stamps · 8.55 "สอง" "–2" stamps (hit, shake) · anchor's screen -> static (7.8-10.4)
+       9.0  "ล้านล้านดอลลาร์" word by word · 9.6 the label
+       10.25 "ฟื้นตัว" the money leaves, the recovery bar wipes in · 12.1 "สี่ถึงสิบปี" the band fills 4 -> 10, both ends land · hold
+       cut: the bar stays where it is and becomes the odds bar -->
+    <div class="view">
+      <div class="world" data-audit="frame teleport" data-cam="0 1.2 900 600, 3.6 1 620 560, 4.85 1 620 560, 5.0 1.08 620 520, 5.8 1.08 620 520, 7.4 .9 600 620">
+        <div class="layer" data-depth="0.3"><canvas data-particles="dust" data-n="70" data-seed="21" data-color="#ffffff #ffd9de"
+             style="position:absolute; left:-400px; top:-400px; width:2000px; height:900px"></canvas></div>
+        <div class="layer">
+          <svg class="big" viewBox="0 0 1080 1110">
+            <defs><linearGradient id="nightG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b0407" stop-opacity="0"/><stop offset="1" stop-color="#3a0b14"/></linearGradient>
+              <radialGradient id="blastY"><stop offset="0" stop-color="#fffbe0"/><stop offset=".45" stop-color="#ffb347" stop-opacity=".9"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient></defs>
+            <rect x="-800" y="-400" width="3000" height="1400" fill="url(#nightG)"/>
+            <g id="city"></g>
+            <rect x="-800" y="900" width="3000" height="400" fill="#14070b"/>
+            <g fill="none" stroke="#6b5a66" stroke-width="7" stroke-linejoin="round">
+              <path d="M10 900 L 48 420 L 72 420 L 110 900 M -20 440 H 140 M -10 500 H 130 M 25 640 L 95 760 M 95 640 L 25 760"/>
+              <path d="M570 900 L 608 420 L 632 420 L 670 900 M 540 440 H 700 M 550 500 H 690 M 585 640 L 655 760 M 655 640 L 585 760"/>
+              <path d="M1130 900 L 1168 420 L 1192 420 L 1230 900 M 1100 440 H 1260 M 1110 500 H 1250 M 1145 640 L 1215 760 M 1215 640 L 1145 760"/>
+            </g>
+            <path class="wire" d="M-600 480 Q -300 530 -20 440 Q 260 520 540 440 Q 820 520 1100 440 Q 1400 520 1700 480"/>
+            <path class="wire" d="M-440 480 Q -140 530 140 440 Q 420 520 700 440 Q 980 520 1260 440 Q 1560 520 1860 480"/>
+            <circle id="ystreak2" r="50" fill="url(#blastY)" opacity="0"/><circle id="ystreak1" r="56" fill="url(#blastY)" opacity="0"/><circle id="ystreak" r="70" fill="url(#blastY)" opacity="0"/>
+          </svg>
+          <div class="burst" style="--at: 4.9s; --x: 620px; --y: 440px; --c: var(--gold)" data-n="12" data-r="240"></div>
+          <div class="burst" style="--at: 5.0s; --x: 60px; --y: 440px; --c: var(--cyan)" data-n="10" data-r="180"></div>
+          <div class="burst" style="--at: 5.1s; --x: 1180px; --y: 440px; --c: var(--gold)" data-n="10" data-r="180"></div>
+        </div>
+      </div>
+      <div class="ov">
+        <div class="on" style="--at: 1.5s; position:absolute; inset:0"><div class="off" style="--at: 3.85s; position:absolute; inset:0">
+        <div class="slide-in" style="--at: 1.5s; position:absolute; inset:0" data-audit="frame collide safe"><div class="slide-out" style="--at: 3.7s; position:absolute; inset:0">
+          <div class="doc"><h4>Severe Space Weather Events</h4><p>National Research Council</p>
+            <svg class="draw" style="--at: 2.0s; --len: .3s" width="340" height="60" fill="none" stroke="#c9ccd6" stroke-width="10" stroke-linecap="round">
+              <path pathLength="1" d="M0 5 H 330" style="--i:0"/><path pathLength="1" d="M0 30 H 280" style="--i:1"/><path pathLength="1" d="M0 55 H 310" style="--i:2"/></svg>
+            <div class="seal stamp" style="--at: 2.8s" data-sfx="pop@end">NRC 2008</div></div></div></div></div></div>
+        <div class="on" style="--at: 7.7s; position:absolute; inset:0"><div class="off" style="--at: 10.25s; position:absolute; inset:0">
+          <div class="money"><span class="stamp" style="--at: 7.95s">$1</span><span class="stamp" style="--at: 8.55s" data-sfx="hit@end">–2</span></div>
+          <div class="money2 words" data-split="word" style="--at: 9.0s">ล้านล้านดอลลาร์</div>
+          <div class="on" style="--at: 9.6s"><div class="money3 wipe" style="--at: 9.6s">ความเสียหายปีแรกในสหรัฐ (ประเมิน)</div></div></div></div>
+        <div class="rise-in" style="--at: 10.45s; position:absolute; left:90px; top:590px; font-size:64px; line-height:1.2">ฟื้นตัว</div>
+        <div class="bar2 wipe" style="--at: 10.4s; --step: 87px"><div class="ticks"></div>
+          <div class="band grow-x" style="left: 348px; width: 522px; --at: 12.1s; --len: .5s" data-sfx="hit@end"></div></div>
+        <div class="tri drop" style="--at: 12.1s; left: 438px"></div>
+        <div class="bnum pin-in" style="--at: 12.15s; left: 400px; top: 556px">4</div>
+        <div class="bnum pin-in" style="--at: 12.55s; right: 120px; top: 556px">10 ปี</div>
+      </div>
+    </div>
+    <i class="cue" style="--at: 4.3s; --len: .6s" data-sfx="riser hit@end"></i>
+    <i class="flash" style="--at: 4.9s"></i>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s; color: var(--gold)" data-sfx="hit@end">1 ปี: ฟื้นตัว 4–10 ปี</div>
+    <div class="src wipe" style="--at: .6s">ที่มา: National Research Council (2008)</div>
+    <div class="pin-in" style="--at: .4s; position:absolute; left:60px; top:376px; width:210px; height:231px">
+      <div class="prop cal" style="left:0; top:0; scale:.7; transform-origin: 0 0" data-head="วันที่" data-from="1" data-to="365" data-t0="0.4" data-at="7.6"></div></div>
+    <div class="track3"><i class="lane"></i><i class="lane"></i><i class="lane"></i><i class="mk to3"></i><span>1 วัน</span><span>1 เดือน</span><span>1 ปี</span></div>
+    <div class="anchor" data-face="wow sad" style="--wow-at: 7.8s; --wow-end: 10.4s; --sad-at: 10.4s"><div class="recoil" style="--at: 8.55s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div>
+  </section>
+
+  <!-- ================================================================== ODDS -->
+  <section data-scene="odds">
+  <!-- motion: 0.0 match cut: the year's bar is still there, empty now, ticks per 5 % · the sun looms top right, the camera
+            drifts toward it all scene (slow, it's the threat) · embers
+       0.3  headline stamps (pop)
+       2.1  "งานวิจัยปี 2021" the paper slides in (the same card as the NRC report), 3.7 it slides out
+       4.0-6.2 a riser builds under the next line (the band charges)
+       4.9  "1.6" a marker drops on 1.6 %, "1.6%" pins in
+       5.5  "ถึง 12%" the band sweeps 1.6 -> 12, lands 6.2 with "12%" (hit) · anchor static 6.2-7.0
+       6.9  "ในทุกสิบปี" the label wipes in · hold -->
+    <div class="view">
+      <div class="world" data-audit="frame teleport" data-cam="0 1 540 555, 8.1 1.12 700 470">
+        <div class="layer" data-depth="0.3"><canvas data-particles="dust" data-n="90" data-seed="31" data-color="#ffffff #ffd9de"
+             style="position:absolute; left:-300px; top:-300px; width:1700px; height:1700px"></canvas></div>
+        <div class="layer">
+          <svg class="big" viewBox="0 0 1080 1110">
+            <defs><radialGradient id="sunO"><stop offset="0" stop-color="#fff6a8"/><stop offset=".55" stop-color="#ffb300"/><stop offset="1" stop-color="#ff6a00"/></radialGradient>
+              <radialGradient id="haloO"><stop offset=".55" stop-color="#ffb300" stop-opacity=".5"/><stop offset="1" stop-color="#ff6a00" stop-opacity="0"/></radialGradient></defs>
+            <g transform="translate(1000 80)"><circle class="corona" r="520" fill="url(#haloO)"/><circle r="360" fill="url(#sunO)"/></g>
+          </svg>
+          <canvas data-particles="embers" data-n="60" data-seed="9" data-color="#ffd166 #ff6a00" style="position:absolute; left:500px; top:-200px; width:700px; height:800px"></canvas>
+        </div>
+      </div>
+      <div class="ov">
+        <div class="on" style="--at: 2.1s; position:absolute; inset:0"><div class="off" style="--at: 3.85s; position:absolute; inset:0">
+        <div class="slide-in" style="--at: 2.1s; position:absolute; inset:0" data-audit="frame collide safe"><div class="slide-out" style="--at: 3.7s; position:absolute; inset:0">
+          <div class="doc" style="height: 400px"><h4>Solar Superstorms</h4><p>Abdu Jyothi · SIGCOMM 2021</p>
+            <svg class="draw" style="--at: 2.5s; --len: .3s" width="340" height="60" fill="none" stroke="#c9ccd6" stroke-width="10" stroke-linecap="round">
+              <path pathLength="1" d="M0 5 H 330" style="--i:0"/><path pathLength="1" d="M0 30 H 280" style="--i:1"/><path pathLength="1" d="M0 55 H 310" style="--i:2"/></svg></div></div></div></div></div>
+        <div class="bar2" style="--step: 217.5px"><div class="ticks"></div>
+          <div class="band grow-x" style="left: 69.6px; width: 452.4px; --at: 5.5s; --len: .7s" data-sfx="hit@end"></div></div>
+        <div class="tri drop" style="--at: 4.9s; left: 159.6px"></div>
+        <div class="tri drop" style="--at: 6.2s; left: 612px"></div>
+        <div class="bnum pin-in" style="--at: 4.95s; left: 90px; top: 540px">1.6%</div>
+        <div class="bnum pin-in" style="--at: 6.25s; left: 530px; top: 540px">12%</div>
+        <div class="wipe" style="--at: 6.9s; position:absolute; left:0; right:0; top:800px; text-align:center; font-size:48px; color:#ffd9de">ในทุก 10 ปี</div>
+      </div>
+    </div>
+    <i class="charge" style="--len: 2.2s; --at: 6.2s" data-sfx="riser"></i>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s" data-sfx="pop@end">โอกาสเกิดมีเท่าไหร่?</div>
+    <div class="src wipe" style="--at: .6s">ที่มา: Abdu Jyothi, SIGCOMM (2021)</div>
+    <div class="anchor" data-face="wow" style="--wow-at: 6.2s; --wow-end: 7.0s"><div class="recoil" style="--at: 6.2s">
+      <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div>
+  </section>
+
+  <!-- ================================================================== END -->
+  <section data-scene="end">
+  <!-- motion: 0.0 back to the hook's globe, still dark; the anchor's screen is static and clears at .6
+       0.3  the verdict stamps (pop) · 0.6 the sources wipe in and stay up to the cut
+       0.5  "ไม่ใช่เรื่องให้ตื่นตระหนก" the network comes back on in a wave left->right, the globe recolours; 1.4 "ไม่ตื่นตระหนก" lands
+       2.1  "แต่ถ้ามันเกิดขึ้นพรุ่งนี้" the camera sinks toward the anchor; 2.9 the network flickers (one blink)
+       3.75 "คุณพร้อมแล้วหรือยัง" the question arrives word by word (.25 s a word, last at 4.95) while the anchor's frame pushes in
+       4.95-5.6 the question hangs, nothing moves but the anchor's blink
+       5.5  his screen goes to static · 5.6-5.8 the broadcast signal dies (full-frame static, 6 frames)
+       5.8  cut to black, the music stops dead (hit cut) · black and silence for the 1.5 s hold -->
+    <div class="view">
+      <div class="world" data-cam="0 1.15 540 460, 1.9 1.05 540 480, 2.1 1.05 540 480, 3.6 1.2 540 660">
+        <div class="layer" data-depth="0.3"><canvas data-particles="dust" data-n="110" data-seed="4" data-color="#ffffff #ffd9de #ffd166"
+             style="position:absolute; left:-300px; top:-300px; width:1700px; height:1700px"></canvas></div>
+        <div class="layer">
+          <div class="globe blink" style="left:310px; top:230px; width:460px; height:460px">
+            <div class="rim on" style="--at: 1.1s"></div>
+            <img class="g-img end" src="icons/globe.svg">
+            <svg class="net end" viewBox="0 0 600 600"></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="scrim"></div>
+    <div class="headline stamp" style="--at: .3s; color: var(--gold); font-size: 72px" data-sfx="pop@end">เตรียมพร้อม <span class="hit-word" style="--at: 1.4s; --accent: #fff">ไม่ตื่นตระหนก</span></div>
+    <div class="on" style="--at: .6s"><div class="src wipe" style="--at: .6s; font-size: 28px; line-height: 1.35">อ้างอิง: NASA · ITU · HGC · ACI Worldwide · BBC · Cloudflare · APNIC<br>National Research Council 2008 · Abdu Jyothi, SIGCOMM 2021 · ไอคอน Twemoji</div></div>
+    <div class="question words" data-split="word" style="--at: 3.75s; --stagger: .25s">คุณพร้อมแล้วหรือยัง?</div>
+    <div class="anchor big" data-face="wow" style="--wow-at: 0s; --wow-end: .6s">
+      <div class="push-in" style="--at: 3.7s; --len: 1.2s; --k: 1.06; --fx: 50%; --fy: 100%"><div class="static-face">
+        <svg class="voice-pulse" data-sprite="anchor" data-character="anchor"></svg></div></div></div>
+    <canvas id="static" width="1080" height="1920"></canvas>
+    <div class="end-cut" data-sfx="hit cut" style="--at: 5.8s"></div>
+  </section>
+
+
+  <div id="caption"></div>
+
+<script>
+const C = { K: "#15151f", G: "#b9bccb", g: "#e04b4b", A: "#9aa0b4", S: "#123241", c: "#8ff6ff", n: "#5f8a96",
+            B: "#26304f", W: "#ffffff", R: "#d7263d", F: "#f2c29b" };
+
+// a TV-headed news anchor, 22 x 30: the screen is his face
+const ANCHOR = [
+  "......A.......A.......",
+  ".......A.....A........",
+  "........A...A.........",
+  "....KKKKKKKKKKKKKK....",
+  "...KGGGGGGGGGGGGGGK...",
+  "...KGKKKKKKKKKKKKGK...",
+  "...KGKSSSSSSSSSSKGK...",
+  "...KGKSSSSSSSSSSKGK...",
+  "...KGKSSSSSSSSSSKGK...",
+  "...KGKSSSSSSSSSSKGK...",
+  "...KGKSSSSSSSSSSKGK...",
+  "...KGKSSSSSSSSSSKGK...",
+  "...KGKKKKKKKKKKKKGK...",
+  "...KGGGGGGGGGGGGgGK...",
+  "....KKKKKKKKKKKKKK....",
+  "........KFFFFK........",
+  "....KKKKKWWWWKKKKK....",
+  "...KBBBBBWRRWBBBBBK...",
+  "..KBBBBBBWRRWBBBBBBK..",
+  "..KBBBBBBBRRBBBBBBBK..",
+  ".KBBKBBBBBRRBBBBBKBBK.",
+  ".KBBKBBBBBRRBBBBBKBBK.",
+  ".KBBKBBBBBBBBBBBBKBBK.",
+  ".KFFKBBBBBBBBBBBBKFFK.",
+  "..KK.KBBBBBBBBBBK.KK..",
+  ".....KBBBBBBBBBBK.....",
+  ".....KBBBBKKBBBBK.....",
+  ".....KBBBK..KBBBK.....",
+  ".....KKKKK..KKKKK.....",
+  "......................",
+];
+// the face, on the screen (cols 6-15, rows 6-11)
+const EYES  = ["cc..cc", "cc..cc"];          // at (8, 7)
+const SHUT  = ["SS..SS", "cc..cc"];          // blink, same place
+const MOUTH = ["cccc"];                      // at (9, 10)
+const TALK  = ["cSSc", "cccc"];              // open, at (9, 10)
+const HALF  = ["cSSc"];                      // half open
+const SAD_EYES = ["Sc..cS"];                // the outer corners drop, at (8, 7)
+const FROWN = ["SccS", "cSSc"];             // over the resting mouth, at (9, 10)
+const NOISE_A = ["nSnSSnSnSn", "SnSnnSSnSS", "nSSnSnSnnS", "SnnSSnSSnS", "nSnSnSnSSn", "SnSSnSnnSn"];
+const NOISE_B = ["SnSnnSnSnS", "nSnSSnnSnn", "SnnSnSnSSn", "nSSnnSnnSn", "SnSnSnSnnS", "nSnnSnSSnS"];
+
+function px(map, x0 = 0, y0 = 0, cls = "") {
+  let out = "";
+  map.forEach((row, y) => {
+    for (let x = 0; x < row.length;) {
+      let n = 1;
+      while (row[x + n] === row[x]) n++;
+      if (row[x] !== ".") out += `<rect x="${x0 + x}" y="${y0 + y}" width="${n}" height="1" fill="${C[row[x]]}"/>`;
+      x += n;
+    }
+  });
+  return `<g class="${cls}">${out}</g>`;
+}
+
+const anchor = `<g class="bob">
+    ${px(ANCHOR)}
+    ${px(EYES, 8, 7)}${px(SHUT, 8, 7, "shut")}
+    ${px(SAD_EYES, 8, 7, "face face-sad")}
+    ${px(MOUTH, 9, 10)}${px(FROWN, 9, 10, "face face-sad")}
+    ${px(HALF, 9, 10, "talk-half")}${px(TALK, 9, 10, "talk")}
+    <g class="face face-wow">${px(NOISE_A, 6, 6, "noiseA")}${px(NOISE_B, 6, 6, "noiseB")}</g>
+  </g>`;
+
+function fillBursts() {
+  document.querySelectorAll(".burst").forEach(b => {
+    const n = +b.dataset.n || 10, r = +b.dataset.r || 260;
+    b.innerHTML = Array.from({ length: n }, (_, k) => {
+      const arc = "up" in b.dataset ? Math.PI : 2 * Math.PI, a0 = "up" in b.dataset ? Math.PI : 0;
+      const a = a0 + ((k + 0.5) / n) * arc + (k % 2) * 0.15, d = r * (k % 3 ? 1 : 0.65);
+      return `<i style="--dx:${Math.round(Math.cos(a) * d)}px; --dy:${Math.round(Math.sin(a) * d * 0.8)}px"></i>`;
+    }).join("");
+  });
+}
+
+document.fonts.forEach(f => f.load());
+const sprites = { anchor: [anchor, "0 0 22 30"] };
+document.querySelectorAll("[data-sprite]").forEach(svg => {
+  const [body, box] = sprites[svg.dataset.sprite];
+  svg.setAttribute("viewBox", box);
+  svg.innerHTML = body;
+});
+fillBursts();
+// ---- Bloom scenario props: builds each prop's inside from its data attributes, and drives the
+// counting ones (a calendar, a number) through window.bloomSeek, which Bloom calls before every frame.
+// No timers, no randomness: the same frame always draws the same thing.
+(() => {
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const hash = (s, k) => { let h = 2166136261; for (const c of s + k) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return h >>> 0; };
+
+  function qrCells(seed) {  // a QR-looking 21 x 21 grid: three finder squares, the rest from a fixed hash
+    const finder = (x, y) => [[0, 0], [14, 0], [0, 14]].some(([fx, fy]) => {
+      const dx = x - fx, dy = y - fy;
+      if (dx < 0 || dy < 0 || dx > 6 || dy > 6) return false;
+      return dx === 0 || dy === 0 || dx === 6 || dy === 6 || (dx > 1 && dx < 5 && dy > 1 && dy < 5);
+    });
+    const inFinder = (x, y) => [[0, 0], [14, 0], [0, 14]].some(([fx, fy]) => x >= fx - 1 && x <= fx + 7 && y >= fy - 1 && y <= fy + 7);
+    let out = "";
+    for (let y = 0; y < 21; y++) for (let x = 0; x < 21; x++) {
+      const on = inFinder(x, y) ? finder(x, y) : hash(seed, x * 31 + y) % 100 < 47;
+      out += on ? "<i></i>" : '<i class="o"></i>';
+    }
+    return out;
+  }
+
+  const build = {
+    qr: el => `<div class="body"><div class="screen">
+        <div class="head">${el.dataset.icon ? `<img src="${esc(el.dataset.icon)}">` : ""}${esc(el.dataset.head || "สแกนจ่าย")}</div>
+        <div class="code">${qrCells(el.dataset.head || "qr")}</div><div class="scan"></div>
+        <div class="amt">${esc(el.dataset.amount || "฿ 50.00")}</div><div class="spin"></div>
+        <div class="res" data-sfx="${"ok" in el.dataset ? "chime" : "buzz"}"><b>${"ok" in el.dataset ? "✓" : "✕"}</b>
+          <span>${esc(el.dataset.result || ("ok" in el.dataset ? "สำเร็จ" : "ทำรายการไม่สำเร็จ"))}</span>
+          <small>${esc(el.dataset.sub || "")}</small></div></div></div>`,
+    pos: el => `<div class="card"></div><div class="body"><div class="screen">
+        <span class="wait">${esc(el.dataset.wait || "กำลังเชื่อมต่อ…")}</span>
+        <div class="no" data-sfx="buzz"><b>${esc(el.dataset.result || "DECLINED")}</b><span>${esc(el.dataset.sub || "ปฏิเสธรายการ")}</span></div></div>
+        <div class="keys">${"<i></i>".repeat(9)}</div></div>`,
+    chat: el => `<div class="msg m1">${esc(el.dataset.first || "ถึงบ้านยัง?")}<i>✓✓</i></div>
+        <div class="msg m2 fail">${esc(el.dataset.second || "โทรกลับด่วน")}<i class="clock">กำลังส่ง…</i><span class="bang" data-sfx="buzz" data-audit="spill">!</span></div>
+        <div class="note">${esc(el.dataset.result || "ส่งไม่สำเร็จ")}</div>`,
+    sea: el => `<div class="wave"></div><div class="floor"></div><div class="wire"></div>
+        ${el.dataset.icon ? `<img class="volc" src="${esc(el.dataset.icon)}">` : ""}
+        <div class="cut" data-sfx="hit"></div>${"ship" in el.dataset ? `<div class="ship" data-sfx="whoosh"></div>` : ""}
+        <div class="sea-tag">${esc(el.dataset.tag || "")}</div>`,
+    sun: el => `<div class="star"></div><div class="blast" data-sfx="${"miss" in el.dataset ? "riser whoosh@end" : "riser hit@end"}"></div><div class="earth"></div>
+        ${el.dataset.icon ? `<img class="hiticon" src="${esc(el.dataset.icon)}">` : ""}
+        <div class="lbl">${esc(el.dataset.label || "")}</div>`,
+    cal: el => `<div class="pad"><div class="top">${esc(el.dataset.head || "วันที่")}</div><div class="num">${esc(el.dataset.from || 1)}</div></div>`,
+    count: el => `<span class="v">${esc(el.dataset.pre || "")}${esc(el.dataset.from || 0)}${esc(el.dataset.suf || "")}</span><small>${esc(el.dataset.label || "")}</small>`,
+    offline: el => `${el.dataset.icon ? `<img class="globe" src="${esc(el.dataset.icon)}">` : ""}<div class="land"></div><div class="wifi"><i></i><i></i><i></i></div><div class="x" data-sfx="buzz">✕</div>
+        <div class="lbl">${esc(el.dataset.label || "")}</div>`,
+    odds: el => {
+      const max = +el.dataset.max || 20, lo = +el.dataset.lo || 0, hi = +el.dataset.hi || max;
+      return `<div class="track"><div class="band" style="left:${lo / max * 100}%; width:${(hi - lo) / max * 100}%" data-sfx="hit"></div></div>
+        <div class="tick" style="left:${lo / max * 100}%">${esc(el.dataset.lotext || lo + "%")}</div>
+        <div class="tick" style="left:${hi / max * 100}%">${esc(el.dataset.hitext || hi + "%")}</div>
+        <div class="lbl">${esc(el.dataset.label || "")}</div>`;
+    },
+  };
+
+  document.querySelectorAll(".prop").forEach(el => {
+    const kind = Object.keys(build).find(k => el.classList.contains(k));
+    if (kind) el.innerHTML = build[kind](el);
+  });
+
+  // counting props: value at scene time t, eased out, formatted with thousands separators
+  const ease = p => 1 - Math.pow(1 - p, 3);
+  // a time is seconds from the scene start, "-1.5" for 1.5 s before its end, or "60%" of the scene
+  const secs = (v, dur, fallback) => {
+    if (v == null || v === "") return fallback;
+    if (v.endsWith("%")) return parseFloat(v) / 100 * dur;
+    return +v < 0 ? dur + +v : +v;
+  };
+  const at = (el, t, dur) => {
+    const t0 = secs(el.dataset.t0, dur, 0), t1 = secs(el.dataset.at, dur, t0 + 1);
+    const from = +el.dataset.from || 0, to = +el.dataset.to || 0;
+    return from + (to - from) * ease(Math.min(1, Math.max(0, (t - t0) / (t1 - t0))));
+  };
+  const fmt = (v, dec) => v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  const before = window.bloomSeek;
+  window.bloomSeek = (id, t) => {
+    if (before) before(id, t);
+    const scene = document.querySelector(`[data-scene="${CSS.escape(id)}"]`);
+    if (!scene) return;
+    const dur = parseFloat(scene.style.getPropertyValue("--scene-dur")) || 6;
+    scene.querySelectorAll(".prop.cal").forEach(el => { el.querySelector(".num").textContent = Math.round(at(el, t, dur)); });
+    scene.querySelectorAll(".prop.count").forEach(el => {
+      el.querySelector(".v").textContent = (el.dataset.pre || "") + fmt(at(el, t, dur), +el.dataset.dec || 0) + (el.dataset.suf || "");
+    });
+  };
+})();
+</script>
+<script>
+// ---- Bloom motion kit: paste into the page after props.js (if any), in a <script> at the end of <body>.
+// Everything here is a pure function of (scene, t): no timers, no Math.random, no state between frames,
+// so the render is the same whichever frame a worker starts on (check with bloom-motion/scripts/seekcheck.py).
+//
+//   data-split="word"            Thai-safe word spans (Intl.Segmenter), each with --i for a CSS stagger
+//   data-split="char"            grapheme spans (a consonant keeps its vowels and tone marks), short strings only
+//   data-stagger                 sets --i on each child (lines of a .rise headline, items of a list)
+//   data-cam="t k cx cy, …"      camera: at scene time t, frame point (cx, cy) of this element at zoom k.
+//                                t is seconds, "-1.5" (from the end) or "60%". Eased in-out between keys.
+//   data-cam-<scene>="…"         the same for one scene: for a world layer outside the sections that
+//                                stays across cuts (match the last key of one scene to the first of the next)
+//   data-depth="0.3"             a layer inside a camera element: 1 moves with it, 0.3 is far away (parallax)
+//   <canvas data-particles="snow|dust|embers|confetti" data-n data-seed data-color data-at>
+//                                closed-form particles: confetti bursts at data-at, the others drift all scene
+//   SVG <animate>                any SMIL in the shown scene is paused and set to t (it runs on the wall clock otherwise)
+//
+// window.BM has the helpers for a page's own bloomSeek code: clamp, prog, ease, spring, hash, rand, secs.
+(() => {
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const prog = (t, a, b) => clamp((t - a) / (b - a));
+  const ease = {
+    out: p => 1 - Math.pow(1 - p, 3), in: p => p * p * p,
+    inOut: p => (p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
+    expo: p => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p)),
+    back: p => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2),
+  };
+  // a damped spring from 0 to 1 at seconds s: closed form, so any frame can be drawn first.
+  // bounce 0 settles without overshoot; .3 overshoots about 10 %; .5 is a comic boing
+  const spring = (s, bounce = .25, settle = .5) => {
+    if (s <= 0) return 0;
+    const w = 2 * Math.PI / settle, z = 1 - bounce;
+    if (z >= 1) return 1 - (1 + w * s) * Math.exp(-w * s);
+    const wd = w * Math.sqrt(1 - z * z);
+    return 1 - Math.exp(-z * w * s) * (Math.cos(wd * s) + (z * w / wd) * Math.sin(wd * s));
+  };
+  const hash = (a, b = 0) => {  // two integers -> [0, 1), the same every time
+    let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const rand = (seed, i, k = 0) => hash(seed * 7919 + i, k);
+  const secs = (v, dur, fallback = 0) => {
+    if (v == null || v === "") return fallback;
+    v = String(v).trim();
+    if (v.endsWith("%")) return parseFloat(v) / 100 * dur;
+    return +v < 0 ? dur + +v : +v;
+  };
+  window.BM = { clamp, prog, ease, spring, hash, rand, secs };
+
+  // ---- text: split once at load, animate with CSS (motion.css .words / .chars) on --i
+  document.querySelectorAll("[data-split]").forEach(el => {
+    const by = el.dataset.split === "char" ? "grapheme" : "word";
+    const seg = new Intl.Segmenter(el.lang || document.documentElement.lang || "th", { granularity: by });
+    let i = 0;
+    el.setAttribute("aria-label", el.textContent);
+    el.innerHTML = [...seg.segment(el.textContent)].map(({ segment, isWordLike }) =>
+      /^\s+$/.test(segment) ? segment
+        : `<span class="${by === "word" ? "w" : "c"}" style="--i:${(by === "grapheme" || isWordLike) ? i++ : Math.max(0, i - 1)}" aria-hidden="true">${segment.replace(/[&<]/g, c => c === "&" ? "&amp;" : "&lt;")}</span>`
+    ).join("");
+  });
+  document.querySelectorAll("[data-stagger]").forEach(el => [...el.children].forEach((c, k) => c.style.setProperty("--i", k)));
+
+  // ---- camera keys: "t k cx cy" pairs
+  const keys = (spec, dur) => spec.split(",").map(s => s.trim().split(/\s+/)).filter(p => p.length >= 4)
+    .map(([t, k, x, y]) => [secs(t, dur), +k, +x, +y]).sort((a, b) => a[0] - b[0]);
+  const camAt = (ks, t) => {
+    if (t <= ks[0][0]) return ks[0].slice(1);
+    for (let j = 1; j < ks.length; j++) if (t < ks[j][0]) {
+      const [t0, ...a] = ks[j - 1], [t1, ...b] = ks[j], p = ease.inOut(prog(t, t0, t1));
+      return a.map((v, n) => v + (b[n] - v) * p);
+    }
+    return ks[ks.length - 1].slice(1);
+  };
+
+  // ---- particles: every particle's position is a formula of its age, never a step from the last frame
+  const PARTICLES = {
+    snow: (c, W, H, t, i, r) => [(r(0) * W + Math.sin(t * (.6 + r(1)) + r(2) * 6) * 18) , (r(3) * H + t * (40 + r(4) * 60)) % (H + 20) - 10, 2 + r(5) * 4, 1],
+    dust: (c, W, H, t, i, r) => [(r(0) * W + t * (r(1) - .5) * 30 + W) % W, (r(2) * H + Math.sin(t * .5 + r(3) * 6) * 24), 1 + r(4) * 2.5, .25 + .35 * (.5 + .5 * Math.sin(t * (1 + r(5)) + r(6) * 6))],
+    embers: (c, W, H, t, i, r) => { const life = 2 + r(0) * 2, age = (t + r(1) * life) % life;
+      return [r(2) * W + Math.sin(age * 2 + r(3) * 6) * 12, H - age / life * H * (.6 + r(4) * .4), 1.5 + r(5) * 2.5, 1 - age / life]; },
+    confetti: (c, W, H, t, i, r) => { if (t < 0) return null;  // a burst from the middle at data-at: gravity, drag, spin
+      // linear drag k, gravity g: x = v(1-e^-kt)/k, y adds g(t - (1-e^-kt)/k)/k; mostly upward, then it rains down
+      const k = 1.3, g = 1600, a = -Math.PI / 2 + (r(0) - .5) * 2.2, v = 400 + r(1) * 1300;
+      const vx = Math.cos(a) * v, vy = Math.sin(a) * v, d = (1 - Math.exp(-k * t)) / k;
+      return [W / 2 + vx * d, H * .55 + vy * d + g * (t - d) / k, 0, 1 - prog(t, 2.2, 3.2), t * (r(2) - .5) * 14]; },
+  };
+  const drawParticles = (cv, t, dur) => {
+    const kind = PARTICLES[cv.dataset.particles];
+    if (!kind) return;
+    const W = cv.width = cv.clientWidth || cv.width, H = cv.height = cv.clientHeight || cv.height;
+    const g = cv.getContext("2d"), n = +cv.dataset.n || 60, seed = +cv.dataset.seed || 1;
+    const colors = (cv.dataset.color || "#fff").split(/\s+/), local = t - secs(cv.dataset.at, dur, 0);
+    g.clearRect(0, 0, W, H);
+    for (let i = 0; i < n; i++) {
+      const p = kind(cv, W, H, kind === PARTICLES.confetti ? local : t, i, k => rand(seed, i, k));
+      if (!p || p[3] <= 0) continue;
+      g.globalAlpha = clamp(p[3]);
+      g.fillStyle = colors[i % colors.length];
+      if (kind === PARTICLES.confetti) {  // flat rectangles that spin and flip read as confetti; dots don't
+        g.save(); g.translate(p[0], p[1]); g.rotate(p[4]); g.scale(1, Math.cos(p[4] * 1.7)); g.fillRect(-11, -6, 22, 12); g.restore();
+      } else { g.beginPath(); g.arc(p[0], p[1], p[2], 0, Math.PI * 2); g.fill(); }
+    }
+    g.globalAlpha = 1;
+  };
+
+  const cams = [...document.querySelectorAll("*")].filter(el => [...el.attributes].some(a => a.name.startsWith("data-cam")));
+  const before = window.bloomSeek;
+  window.bloomSeek = (id, t) => {
+    if (before) before(id, t);
+    const scene = document.querySelector(`[data-scene="${CSS.escape(id)}"]`);
+    if (!scene) return;
+    const dur = parseFloat(scene.style.getPropertyValue("--scene-dur")) || 6;
+    const mine = el => { const s = el.closest("[data-scene]"); return !s || s === scene; };
+
+    cams.forEach(el => {
+      if (!mine(el)) return;
+      const spec = el.getAttribute(`data-cam-${id}`) || el.dataset.cam;
+      if (!spec) return;
+      const ks = keys(spec, dur);
+      if (!ks.length) return;
+      const [k, cx, cy] = camAt(ks, t), w = el.offsetWidth, h = el.offsetHeight;
+      const tx = w / 2 - cx * k, ty = h / 2 - cy * k;
+      el.style.transformOrigin = "0 0";
+      el.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`;
+      el.querySelectorAll(":scope [data-depth]").forEach(layer => {  // far layers give back part of the move
+        const d = +layer.dataset.depth;
+        layer.style.transform = `translate(${-(1 - d) * (tx - (w / 2 - w / 2 * k)) / k}px, ${-(1 - d) * (ty - (h / 2 - h / 2 * k)) / k}px)`;
+      });
+    });
+    scene.querySelectorAll("canvas[data-particles]").forEach(cv => drawParticles(cv, t, dur));
+    scene.querySelectorAll("svg").forEach(svg => {
+      if (svg.querySelector("animate, animateTransform, animateMotion, set")) { svg.pauseAnimations(); svg.setCurrentTime(t); }
+    });
+  };
+})();
+
+</script>
+<script>
+// ---- this video's worlds: built once at load, then drawn from (scene, t) only. No timers, no Math.random.
+(() => {
+  const { prog, ease, rand } = window.BM;
+  const q = s => document.querySelector(s);
+  const bez = (a, c, b, u) => [0, 1].map(k => (1 - u) * (1 - u) * a[k] + 2 * (1 - u) * u * c[k] + u * u * b[k]);
+
+  // the network on the globe: hook = on, then out in a wave left -> right; end = back on
+  const NODES = [[150, 180], [260, 115], [400, 150], [475, 260], [420, 385], [300, 300], [175, 335], [115, 250], [250, 455],
+                 [380, 480], [505, 400], [330, 210], [205, 230], [445, 200]];
+  const LINKS = [[0, 1], [1, 2], [2, 3], [3, 4], [4, 9], [9, 8], [8, 6], [6, 7], [7, 0], [5, 11], [11, 2], [5, 4], [12, 5], [13, 10], [6, 5], [1, 11]];
+  document.querySelectorAll(".net").forEach(svg => {
+    const end = svg.classList.contains("end");
+    let html = "";
+    LINKS.forEach(([a, b], i) => {
+      const [x1, y1] = NODES[a], [x2, y2] = NODES[b];
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, L = Math.hypot(mx - 300, my - 300) || 1;
+      const d = `M${x1} ${y1} Q${(mx + (mx - 300) / L * 70).toFixed(1)} ${(my + (my - 300) / L * 70).toFixed(1)} ${x2} ${y2}`;
+      const wave = Math.min(x1, x2) / 600 * .5, at = end ? .5 + wave : .15 + i * .04;
+      html += `<g class="o" style="--d:${wave.toFixed(3)}s"><path class="arc draw" pathLength="1" style="--at:${at.toFixed(2)}s; --len:.45s" d="${d}"/>` +
+              `<g class="on" style="--at:${(at + .45).toFixed(2)}s"><path class="fl" d="${d}"/></g></g>`;
+    });
+    NODES.forEach(([x, y]) => {
+      const wave = (x / 600 * .5).toFixed(3);
+      html += `<g class="o" style="--d:${wave}s"><circle class="halo" cx="${x}" cy="${y}" r="17"/></g><circle class="core" style="--d:${wave}s" cx="${x}" cy="${y}" r="8"/>`;
+    });
+    svg.innerHTML = html;
+  });
+
+  // the city in the year scene: lit windows go out in a wave out from the strike at x 620
+  const city = q("#city");
+  if (city) {
+    let x = -460, i = 0, out = "";
+    while (x < 1760) {
+      const w = 90 + Math.round(rand(7, i, 0) * 90), h = 220 + Math.round(rand(7, i, 1) * 340), top = 900 - h;
+      let lit = "", dark = "";
+      const cols = Math.floor((w - 16) / 26), rows = Math.floor((h - 24) / 34);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const cell = `<rect x="${x + 12 + c * 26}" y="${top + 16 + r * 34}" width="14" height="20"/>`;
+        if (rand(9, i * 997 + r * 41 + c) < .62) lit += cell; else dark += cell;
+      }
+      const d = 4.95 + Math.abs(x + w / 2 - 620) / 1300 * .7;
+      out += `<rect x="${x}" y="${top}" width="${w}" height="${h}" fill="#26111b"/><g fill="#3c2232">${dark}</g>` +
+             `<g class="lit" fill="#ffd166" style="--d:${d.toFixed(2)}s">${lit}</g>`;
+      x += w + 8 + Math.round(rand(7, i, 2) * 14); i++;
+    }
+    city.innerHTML = out;
+  }
+
+  // the fleet: 60 repair ships, one icon each
+  const fleet = q("#fleet");
+  if (fleet) fleet.innerHTML = Array.from({ length: 60 }, (_, i) =>
+    `<img class="pin-in" src="icons/ship.svg" style="--at:${(13.0 + i * .02).toFixed(2)}s">`).join("");
+
+  // the banknotes streaming into the board (day)
+  const flies = q("#flies");
+  if (flies) flies.innerHTML = '<i class="fly"></i>'.repeat(10);
+
+  // ---- sun: Earth on its orbit, two blasts, the year
+  const S = [-340, -820], R = 1040, E0 = [700, -820];
+  const orb = deg => [S[0] + R * Math.cos(deg * Math.PI / 180), S[1] + R * Math.sin(deg * Math.PI / 180)];
+  const P = orb(-16);  // where Earth was "a week" before 2012's blast crossed its orbit (exaggerated so it reads)
+  const place = (el, [x, y], s = 1, o = 1) => {
+    if (!el) return;
+    el.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(${s.toFixed(3)})`);
+    el.setAttribute("opacity", o.toFixed(3));
+  };
+  // a blast at path position u (0 = the sun, 1 = the target), with three trailing ghosts
+  const blast = (id, path, u, o) => {
+    [0, .06, .12, .19].forEach((lag, k) => {
+      const uu = Math.max(0, u - lag);
+      place(q(k ? `#${id}t${k - 1}` : `#${id}`), path(uu), .45 + .9 * Math.min(uu, 1), o * (k ? .5 - k * .12 : 1));
+    });
+  };
+  const p1 = u => bez([-110, -820], [300, -1000], E0, u);
+  const p2 = u => u <= 1 ? bez([-110, -840], [260, -1080], P, u)
+                         : [P[0] + (P[0] - S[0]) * .4 * (u - 1) / .3, P[1] + (P[1] - S[1]) * .4 * (u - 1) / .3];
+  const yStart = [-300, -420], yEnd = [620, 430];
+  // a small buffer for the static, fully rewritten on every frame it shows
+  const noise = Object.assign(document.createElement("canvas"), { width: 135, height: 240 }).getContext("2d");
+
+  const drive = {
+    sun(t) {
+      place(q("#earth"), orb(t < 8.86 ? 0 : -16 + 16 * ease.inOut(prog(t, 9.2, 12.6))));
+      const on1 = t >= 4.7 && t <= 5.95;
+      blast("b1", p1, Math.pow(prog(t, 4.7, 5.9), 1.6), on1 ? 1 : 0);
+      const u2 = t < 12.4 ? Math.pow(prog(t, 10.4, 12.4), 1.4) : 1 + .3 * prog(t, 12.4, 13.0);
+      blast("b2", p2, u2, t >= 10.4 && t <= 13.0 ? 1 - prog(t, 12.6, 13.0) : 0);
+      const yr = q("#yr");
+      if (yr) yr.textContent = t < 9.0 ? 1859 : Math.round(1859 + 153 * ease.out(prog(t, 9.0, 9.8)));
+    },
+    day(t) {
+      // the walking banknote: steady steps along the route, frozen at 1.6 s
+      const n = q("#note");
+      if (n) {
+        const [x, y] = bez([430, 520], [620, 360], [830, 572], .55 * prog(t, .4, 1.6));
+        const hop = t > .4 && t < 1.6 ? Math.abs(Math.sin((t - .4) * Math.PI / .24)) * 10 : 0;
+        n.style.transform = `translate(${(x - 60).toFixed(1)}px, ${(y - 35 - hop).toFixed(1)}px)`;
+      }
+      // notes streaming into the board: note i is born at 2.6 + i * .13 s and loops every 1.1 s; no new loop after 5.6 s
+      document.querySelectorAll("#flies .fly").forEach((f, i) => {
+        const birth = 2.6 + i * .13, age = t - birth, loops = Math.floor(age / 1.1);
+        if (age < 0 || birth + loops * 1.1 > 5.6) { f.style.opacity = 0; return; }
+        const ph = (age % 1.1) / 1.1, [x, y] = bez([1150 + (i % 3) * 50, 1080], [1320 + (i % 4) * 60, 560 - (i % 3) * 90], [1740, 380], ease.inOut(ph));
+        f.style.opacity = ph > .8 ? ((1 - ph) / .2).toFixed(3) : 1;
+        f.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) rotate(${(-25 + 50 * ph).toFixed(1)}deg) scale(${(1 - .45 * ph).toFixed(3)})`;
+      });
+    },
+    end(t) {
+      const cv = q("#static");
+      if (!cv) return;
+      const g = cv.getContext("2d");
+      g.clearRect(0, 0, 1080, 1920);
+      if (t < 5.6 || t >= 5.8) return;
+      const f = Math.floor(t * 30), W = 135, H = 240, img = noise.createImageData(W, H);
+      for (let i = 0; i < W * H; i++) {
+        const row = Math.floor(i / W), band = rand(77, f * 1000 + Math.floor(row / 12)) < .25;  // torn bands
+        const v = Math.floor(rand(f, i) * 255 * (band ? .45 : 1));
+        img.data.set([v, v * (band ? .9 : 1), v * (band ? .95 : 1), 255], i * 4);
+      }
+      noise.putImageData(img, 0, 0);
+      g.imageSmoothingEnabled = false;
+      g.globalAlpha = .55 + .45 * prog(t, 5.6, 5.75);
+      g.drawImage(noise.canvas, 0, 0, 1080, 1920);
+      g.globalAlpha = 1;
+    },
+    year(t) {
+      [0, .07, .14].forEach((lag, k) => {
+        const u = Math.pow(Math.max(0, prog(t, 4.3, 4.9) - lag), 1.8), on = t >= 4.3 && t <= 4.92;
+        place(q(k ? `#ystreak${k}` : "#ystreak"), yStart.map((v, j) => v + (yEnd[j] - v) * u), .6 + .6 * u, on ? (k ? .5 : 1) : 0);
+      });
+    },
+  };
+  // world text the camera has taken wholly outside the footage window is clipped by it; hide it outright so
+  // nothing (the layout audit included) treats it as on screen. Runs after the camera (motion.js) has moved.
+  const ownText = el => [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+  const cull = [...document.querySelectorAll(".world *")].filter(el => !el.closest("svg") && (ownText(el) || el.classList.contains("prop")));
+  const before = window.bloomSeek;
+  window.bloomSeek = (id, t) => {
+    if (before) before(id, t);
+    if (drive[id]) drive[id](t);
+    const scene = document.querySelector(`[data-scene="${CSS.escape(id)}"]`), view = scene && scene.querySelector(".view");
+    if (!view) return;
+    const v = view.getBoundingClientRect();
+    cull.forEach(el => {
+      if (!scene.contains(el)) return;
+      const r = el.getBoundingClientRect();
+      el.style.visibility = r.right <= v.left || r.left >= v.right || r.bottom <= v.top || r.top >= v.bottom ? "hidden" : "";
+    });
+  };
+})();
+</script>
+</body>
+</html>

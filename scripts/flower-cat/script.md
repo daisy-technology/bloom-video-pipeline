@@ -1,6 +1,7 @@
 # Flower cat
 
-<!-- A pixel cat in a flower hat, captions in Mali, a girl's voice.
+<!-- A pixel cat in a flower hat, captions in Mali, a girl's voice. She laughs at the end ([laughter]:
+     performed by the voice, never shown in the captions), then jumps; the sting lands on the last card.
      Render: uv run bloom build scripts/flower-cat --voice "omnivoice:female, child, high pitch" -->
 
 ## hello ~bright
@@ -10,4 +11,4 @@
 หมวกใบนี้ คุณยายถักให้ค่ะ มีดอกไม้สีชมพู กับดอกสีขาวเล็ก ๆ อีกดอก
 
 ## bye +1.5
-ฝากติดตามหนูด้วยนะคะ แล้วเจอกันใหม่ค่ะ
+ฝากติดตามหนูด้วยนะคะ แล้วเจอกันใหม่ค่ะ [laughter]

@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>Bloom intro, long take</title>
+<style>
+  /* ---- Bloom's intro as one long take (1920x1080). One isometric world outside the sections stays on
+     screen the whole video; the camera travels one road, station by station: script.md → voice → scenes →
+     sound → MP4, then the skills plaza and the before/after stage. Each station builds on its words
+     (data-after) and stays built; the end pulls out over all of it.
+     Motion language: clean / informative, unit .4 s, no overshoot.
+     World-clock motion (typing, counters, waveforms, sprite-sheet phones) is drawn in the bloomSeek at the
+     bottom from (scene, t) and the scene lengths in DUR there. */
+  :root {
+    --bg: #eef2f7; --ink: #17202c; --soft: #5b6676; --accent: #e0457b;
+    --c1: #5b8def; --c2: #2ec4a6; --c3: #ffb84d; --floor: #dde4ee; --road: #cbd5e2;
+    --u: .4s; --stagger: 60ms;
+  }
+  @font-face { font-family: Mitr; src: url(fonts/Mitr-Regular.ttf); font-weight: 400; }
+  @font-face { font-family: Mitr; src: url(fonts/Mitr-SemiBold.ttf); font-weight: 600; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg);
+               font-family: Mitr, system-ui, sans-serif; color: var(--ink); }
+  section { position: absolute; inset: 0; z-index: 10; }
+
+  /* the world: bigger than the frame; z-index 0 keeps all of it under the sections */
+  .world { position: absolute; left: 0; top: 0; z-index: 0; width: 5300px; height: 2800px; }
+
+  /* ---- panels: flat UI cards standing on the station blocks (data-pin), read straight on */
+  .panel { width: 460px; height: 300px; box-sizing: border-box; background: #fff; border-radius: 18px;
+           box-shadow: 0 18px 40px #17202c24; overflow: hidden; font-size: 24px; line-height: 1.4; }
+  .panel.tall { width: 520px; height: 440px; }
+  .bar { height: 46px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #f2f5f9;
+         font-weight: 600; color: var(--soft); }
+  .bar i { width: 12px; height: 12px; border-radius: 50%; background: #d3dae4; }
+  .bar b { margin-left: 6px; font-weight: 600; color: color-mix(in oklch, var(--accent) calc(var(--p, 0) * 100%), var(--soft)); }
+  .bar .pill { margin-left: auto; }
+  .body { padding: 14px 20px; }
+  .pill { display: inline-block; padding: 2px 14px; border-radius: 999px; background: #eef2f7; font-weight: 600; font-size: 24px; }
+  .pill.on { background: var(--accent); color: #fff; }
+  .grow-in { opacity: min(1, calc(var(--p, 1) * 3)); scale: calc(.7 + .3 * var(--p, 1)); }  /* a chip arriving inside a panel */
+
+  /* script.md: lines type as they are said; the untyped rest is held as a ghost so nothing reflows */
+  .code { padding: 12px 22px; font-size: 26px; line-height: 1.45; }
+  .ln { min-height: 1.45em; }
+  .ln.h { display: table; padding: 0 10px; margin-left: -10px; border-radius: 8px; font-weight: 600; color: var(--soft);
+          background: color-mix(in oklch, var(--accent) calc(var(--p, 0) * 16%), transparent);
+          color: color-mix(in oklch, var(--accent) calc(var(--p, 0) * 100%), var(--soft)); }
+  .ghost { visibility: hidden; }  /* holds the line's layout, never drawn */
+  .typing .t::after { content: ""; display: inline-block; width: 3px; height: 1.05em; margin-left: 2px;
+                      vertical-align: -.15em; background: var(--accent); }
+
+  /* voice: a waveform that follows the narrator's loudness (--voice, set by Bloom every frame) */
+  .wave { display: flex; align-items: center; gap: 5px; height: 92px; }
+  .wave i { flex: 1; height: 84px; border-radius: 4px; background: var(--c2);
+            scale: 1 calc(.06 + var(--p, 0) * var(--h, .3) * (.3 + .7 * var(--voice, .45))); }
+  .row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); flex: none; }
+  .track { flex: 1; height: 12px; border-radius: 6px; background: #e6ebf2; overflow: hidden; }
+  .track > i { display: block; height: 100%; width: calc(var(--r, 0) * 100%); background: var(--accent); }
+  .num { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+
+  /* scenes: a page that moves, and the frames it renders to */
+  .view { position: relative; height: 138px; background: #f6f8fb; border-bottom: 1px solid #e6ebf2; overflow: hidden; }
+  .view .hop { position: absolute; left: 40px; bottom: 26px; width: 44px; height: 44px; border-radius: 10px; background: var(--accent);
+               animation: hop 1.6s cubic-bezier(.65, 0, .35, 1) infinite alternate; }
+  @keyframes hop { 0% { translate: 0 0 } 50% { translate: 160px -62px } 100% { translate: 320px 0 } }
+  .view .sun { position: absolute; right: 44px; top: 20px; width: 34px; height: 34px; border-radius: 50%; background: var(--c3); }
+  .view .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 26px; background: #dfe6f0; }
+  .view .fc { position: absolute; left: 14px; top: 10px; }
+  .film { display: flex; gap: 8px; padding: 12px 20px 0; }
+  .film > div { position: relative; width: 62px; height: 40px; border-radius: 6px; background: #f6f8fb; border: 2px solid #dfe6f0; }
+  .film > div::after { content: ""; position: absolute; bottom: 6px; left: var(--x); width: 12px; height: 12px; border-radius: 3px; background: var(--accent); }
+  .sync { position: relative; padding: 8px 20px 0; }
+  .sync .wave { height: 34px; gap: 3px; }
+  .sync .wave i { height: 30px; background: var(--c1); scale: 1 var(--h0); }
+  .head-line { position: absolute; top: -66px; bottom: 0; left: calc(20px + var(--r, 0) * 420px); width: 3px; background: var(--ink); }
+
+  /* sound: music by mood, effects on the motion, loudness to the target */
+  .lane { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; height: 72px; }
+  .lane > span { color: var(--soft); }
+  .roll { position: relative; height: 54px; clip-path: inset(0 calc((1 - var(--r, 0)) * 100%) 0 0); }
+  .roll i { position: absolute; height: 9px; border-radius: 5px; background: var(--c1); }
+  .moods { display: flex; gap: 8px; }
+  .moods .pill { font-size: 22px; padding: 0 12px; }
+  .moods .b { background: color-mix(in oklch, var(--c3) calc(var(--p, 0) * 100%), #eef2f7); }
+  .fx { position: relative; height: 54px; }
+  .fx .m { position: absolute; bottom: 4px; height: 16px; border-radius: 8px; background: #dfe6f0; }
+  .fx .d { position: absolute; bottom: 24px; width: 18px; height: 18px; margin-left: -9px; rotate: 45deg; background: var(--accent);
+           opacity: min(1, calc(var(--p, 0) * 4)); translate: 0 calc((1 - var(--p, 0)) * -26px); }
+  .meter { position: relative; height: 18px; border-radius: 9px; background: #e6ebf2; }
+  .meter > i { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--r, 0) * 78%); border-radius: 9px; background: var(--c2); }
+  .meter > b { position: absolute; left: 78%; top: -8px; bottom: -8px; width: 3px; background: var(--ink); }
+  .lufs { display: flex; justify-content: space-between; align-items: center; }
+
+  /* mp4: the finished file, with its subtitles burned in */
+  .screen { position: relative; margin: 14px 16px; height: 222px; border-radius: 12px; background: #1d2736; overflow: hidden; }
+  .screen .mini { position: absolute; left: 50%; top: 18px; translate: -50% 0; }
+  .screen .sub { position: absolute; left: 50%; bottom: 26px; translate: -50% 0; white-space: nowrap; padding: 2px 14px; border-radius: 8px;
+                 background: #000a; color: #fff; clip-path: inset(0 calc((1 - var(--p, 0)) * 100%) 0 0); }
+  .screen .mute { position: absolute; right: 12px; top: 10px; }
+  .screen .prog { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: #ffffff22; }
+  .screen .prog i { display: block; height: 100%; width: calc(var(--r, 0) * 100%); background: var(--accent); }
+
+  /* labels pinned in the world */
+  .tag { font-size: 32px; font-weight: 600; background: #fff; padding: 8px 22px; border-radius: 999px; box-shadow: 0 10px 30px #17202c22;
+         white-space: nowrap; }
+  .tag.acc { background: var(--accent); color: #fff; }
+  .skill { display: flex; flex-direction: column; align-items: center; padding: 10px 24px; border-radius: 20px; line-height: 1.3; }
+  .skill b { font-size: 32px; }
+  .skill small { font-size: 26px; font-weight: 400; color: var(--soft); }
+
+  /* things travelling the road between stations: one per cut, the camera follows it */
+  .packet { width: 58px; height: 58px; border-radius: 14px; background: #fff; box-shadow: 0 8px 20px #17202c30;
+            display: grid; place-items: center;
+            transform: translate(calc(var(--r, 0) * 314px), calc(var(--r, 0) * 157px));
+            opacity: calc(min(1, var(--r, 0) * 12) * (1 - var(--q, 0))); }
+
+  /* phones playing the bench videos: 216x384 frames from an 8x5 sprite sheet (40 frames, 10 fps) */
+  .phone { width: 216px; height: 384px; padding: 8px; border-radius: 30px; background: #17202c; box-shadow: 0 16px 36px #17202c33; }
+  .phone .scr { width: 216px; height: 384px; border-radius: 22px; background-size: 800% 500%; background-repeat: no-repeat; }
+  .gallery { display: flex; gap: 56px; align-items: flex-start; }
+  .pair { display: flex; gap: 16px; }
+  .side { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 232px; }
+  .side .tag { font-size: 30px; padding: 4px 22px; }
+  .slide { transform: translateX(calc(var(--p, 0) * -124px)); }
+  .names { height: 54px; }
+  .name { font-size: 32px; }
+
+  /* what is read in screen space, inside the title-safe area */
+  .head { position: absolute; left: 120px; top: 84px; }
+  .head h1 { margin: 0; font-size: 96px; line-height: 1.15; font-weight: 600; }
+  .head p { margin: 6px 0 0; font-size: 34px; color: var(--soft); }
+  .ask { position: absolute; right: 110px; top: 110px; padding: 18px 44px 30px; border-radius: 28px; text-align: center;
+         animation: m-fade .3s ease-out var(--at) both;
+         background: color-mix(in oklch, var(--bg) 94%, transparent); box-shadow: 0 20px 60px #17202c24; }
+  .ask h1 { margin: 0; font-size: 68px; line-height: 1.3; font-weight: 600; white-space: nowrap; }
+  .ask p { margin: 30px 0 0; font-size: 30px; color: var(--soft); }
+  #caption { position: absolute; left: 240px; right: 240px; bottom: 80px; z-index: 50; text-align: center;
+             font-size: 44px; line-height: 1.35; text-shadow: 0 0 12px var(--bg), 0 0 4px var(--bg); }
+  #caption:empty { display: none; }
+
+  /* ---- Bloom motion kit: paste into the page's <style> after impact.css and props.css (if used).
+   Every move starts at --at (seconds from the scene start, default .3s) and staggers on --i, which
+   motion.js sets for [data-split] and [data-stagger]. Each class sets `animation`, so ONE moving class
+   per element: to combine (an entrance and an exit, a cut and a slam), nest elements, a wrapper per move.
+   Nested moves add up, and these use translate / scale / rotate, which also add to a `transform`.
+   Seek-safe: keyframes only; the renderer sets every frame's time.
+
+   Set the motion language once, on :root, and use the tokens everywhere (bloom-motion, section 1). */
+/* --len (a move's length) belongs to the element that sets it: a wrapper's long push must not slow its
+   children's moves. Not inherited, no initial value, so each class's own default applies. */
+@property --len { syntax: '*'; inherits: false; }
+
+:root {
+  --e-out: cubic-bezier(.16, 1, .3, 1);     /* arrivals: fast then settle (expo out) */
+  --e-in: cubic-bezier(.7, 0, .84, 0);      /* departures: leave accelerating */
+  --e-move: cubic-bezier(.65, 0, .35, 1);   /* a thing or the camera going from A to B */
+  --e-pop: cubic-bezier(.34, 1.56, .64, 1); /* one overshoot: playful only, never on numbers */
+  --u: .4s;                                 /* the base unit: durations are multiples of it */
+  --stagger: 70ms;                          /* words 40-70 ms, lines 60-100, chars 20-40 */
+}
+
+/* ---- text. Thai stacks marks above (่ ้ ๊ ั ี) and below (ุ ู) the line: the mask gets room on both
+   sides, and the line starts far enough down that its tone marks are hidden too. */
+.rise { display: block; overflow: hidden; padding: .35em 0 .25em; margin: -.35em 0 -.25em; }  /* one line per .rise */
+.rise > * { display: block; animation: m-rise calc(var(--u) * 1.5) var(--e-out) calc(var(--at, .3s) + var(--i, 0) * 90ms) both; }
+@keyframes m-rise { from { translate: 0 165% } }
+
+.words .w, .chars .c { display: inline-block; white-space: pre;
+  animation: m-word calc(var(--u) * 1.25) var(--e-out) calc(var(--at, .3s) + var(--i, 0) * var(--stagger)) both; }
+@keyframes m-word { from { opacity: 0; translate: 0 .45em } }
+.words.pop .w { animation: m-wpop .26s var(--e-pop) calc(var(--at, .3s) + var(--i, 0) * var(--stagger)) both; }
+@keyframes m-wpop { from { opacity: 0; translate: 0 .18em; scale: .7 } }
+
+.wipe { animation: m-wipe calc(var(--u) * 1.5) var(--e-out) var(--at, .3s) both; }
+@keyframes m-wipe { from { clip-path: inset(-.3em 100% -.3em 0) } to { clip-path: inset(-.3em 0 -.3em 0) } }
+
+.blurin { animation: m-blur calc(var(--u) * 1.75) var(--e-out) var(--at, .3s) both; }  /* costly: one per frame */
+@keyframes m-blur { from { opacity: 0; filter: blur(12px) } }
+
+/* a word that lands: give it its own colour and a small scale, on the beat the voice says it */
+.hit-word { display: inline-block; animation: m-hitw .3s var(--e-out) var(--at, 1s) both; }
+@keyframes m-hitw { 0% { color: inherit; scale: 1 } 40% { scale: 1.12 } 100% { color: var(--accent, #ffd166); scale: 1 } }
+
+/* ---- lines that draw. Put pathLength="1" on each <path>, so every path takes the same dash numbers. */
+.draw, .draw path, .draw line, .draw polyline, .draw circle { stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: m-draw var(--len, .9s) var(--e-move) calc(var(--at, .3s) + var(--i, 0) * .12s) both; }
+.draw.hand, .draw.hand * { animation-timing-function: linear; }  /* a steady hand: eased long strokes lurch */
+@keyframes m-draw { to { stroke-dashoffset: 0 } }
+.fill-after { animation: m-fade var(--u) ease-out calc(var(--at, .3s) + var(--len, .9s)) both; }  /* outline first, then the fill */
+@keyframes m-fade { from { opacity: 0 } }
+
+.flow { stroke-dasharray: var(--dash, 8 8); animation: m-flow .6s linear infinite; }  /* data moving along a line */
+@keyframes m-flow { to { stroke-dashoffset: calc(var(--period, 16) * -1) } }  /* a path with pathLength="1": --dash: .02 .02; --period: .04 */
+
+/* something travelling a path: style="--path: path('M0 0 C 300 -200 600 -200 900 0')". The path is in the
+   element's containing block, and the element's own centre rides it: give it position: absolute and a size */
+.along { offset-path: var(--path); offset-rotate: var(--turn, 0deg); offset-distance: 0%;
+  animation: m-along var(--len, 1.4s) var(--e-move) var(--at, .3s) both; }
+.along.turns { --turn: auto; }
+@keyframes m-along { to { offset-distance: 100% } }
+
+/* ---- the camera on one element (a world, a stage). For several moves in a scene use motion.js data-cam. */
+.push-in { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-push var(--len, 1.6s) var(--e-move) var(--at, 0s) both; }
+@keyframes m-push { to { scale: var(--k, 1.12) } }
+.pull-out { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-pull var(--len, 1.8s) var(--e-move) var(--at, 0s) both; }
+@keyframes m-pull { from { scale: var(--k, 1.15) } }
+.drift { animation: m-drift calc(var(--scene-dur, 8s) + 1s) linear both; }  /* a slow pan across the whole scene */
+@keyframes m-drift { from { translate: calc(var(--dx, 40px) * -1) 0 } to { translate: var(--dx, 40px) 0 } }
+
+/* ---- cuts. The way in on the scene's wrapper, the way out on a wrapper inside it:
+   <section data-scene="x"><div class="in-whip"><div class="out-push" style="--fx: 50%; --fy: 30%">…
+   A hard cut needs none of them; pick one family for the video and one accent for the turn (bloom-motion, section 4). */
+.in-whip  { animation: m-whip-in .28s var(--e-out) both; }
+.out-whip { animation: m-whip-out .28s var(--e-in) calc(var(--scene-dur) - .28s) both; }
+@keyframes m-whip-in  { from { translate: 100% 0; filter: blur(14px) } }
+@keyframes m-whip-out { to   { translate: -100% 0; filter: blur(14px) } }
+.in-push  { animation: m-push-in .4s var(--e-out) both; }             /* we fly into the new scene */
+.out-push { transform-origin: var(--fx, 50%) var(--fy, 45%); animation: m-push-out .35s var(--e-in) calc(var(--scene-dur) - .35s) both; }
+@keyframes m-push-in  { from { scale: 1.25; opacity: 0 } }
+@keyframes m-push-out { to   { scale: 2.4; opacity: 0 } }             /* into the screen, the window, the eye */
+.in-dip  { animation: m-fade .35s ease-out both; }                     /* time passing: a chapter break */
+.out-dip { animation: m-dip .35s ease-in calc(var(--scene-dur) - .35s) both; }
+@keyframes m-dip { to { opacity: 0 } }
+
+/* ---- texture: hand-drawn boil, re-drawn every 4 frames (every frame reads as noise) */
+.boil { animation: m-boil .4s steps(1) infinite; }
+@keyframes m-boil { 0% { translate: 0 0; rotate: 0deg } 33% { translate: .6px -.5px; rotate: .25deg } 66% { translate: -.5px .4px; rotate: -.2deg } }
+
+/* ---- endings: every video ends on a hook (bloom-story-structure, "End on a hook"; bloom-motion section 3).
+   Full-frame layers, last inside the final scene's section. Time them with --at (and --len for a fade).
+   .end-cut   black at once on the reveal: data-sfx="hit cut" (or "sting cut"); the music stops dead with it
+   .end-fade  black over --len: data-sfx="fade"; the music fades over the same span
+   .tease     the next part glimpsed but never resolved: it rises as a dark, soft silhouette and stays one
+              (set it against light: a glow, a lit doorway, a bright sky, or it disappears into a dark page)
+   .peek      the next part through a slit that opens a little and stops */
+.end-cut, .end-fade { position: absolute; inset: 0; z-index: 90; background: var(--end, #000); opacity: 0; pointer-events: none; }
+.end-cut  { animation: m-end .001s steps(1, start) var(--at, 1s) forwards;  /* black on the very frame of --at, with its sound */ }
+.end-fade { animation: m-end var(--len, .9s) ease-in var(--at, 1s) forwards; }
+@keyframes m-end { to { opacity: 1 } }
+.tease { animation: m-tease var(--len, 1.4s) var(--e-out) var(--at, .3s) both; }
+@keyframes m-tease { from { opacity: 0; scale: .92; filter: brightness(0) blur(18px) } to { opacity: 1; scale: 1; filter: brightness(.14) blur(4px) } }
+.peek { animation: m-peek var(--len, 1.2s) var(--e-move) var(--at, .3s) both; }
+@keyframes m-peek { from { clip-path: inset(50% 0 50% 0) } to { clip-path: inset(36% 0 36% 0) } }
+
+/* ---- world state (motion.js data-after / data-until): --p runs 0 → 1 once and stays 1 in later scenes,
+   --q likewise for leaving. Seek-safe without keyframes, so a long-take world keeps what happened.
+   .appear and .grow take both: one element arrives on its words (data-after) and leaves when the camera
+   has moved on (data-until). */
+.appear { opacity: calc(var(--p, 1) * (1 - var(--q, 0))); translate: 0 calc((1 - var(--p, 1)) * 40px); }
+.build  { transform-box: fill-box; transform-origin: 50% 100%; scale: 1 var(--p, 1); }  /* rises from its base: a block, a bar */
+.grow   { opacity: calc(min(1, var(--p, 1) * 3) * (1 - var(--q, 0))); scale: calc(.6 + .4 * var(--p, 1)); }
+.leave  { opacity: calc(1 - var(--q, 0)); }
+
+</style>
+</head>
+<body>
+
+<!-- the world. Camera keys per scene: each scene's first key is the previous scene's last, so the take never
+     breaks. Anchors (a0…aAll) are zero-size pins: a #id key frames an element's offset box, and a pin's box
+     is shifted by its translate, so the camera aims at empty pins placed where each shot should centre. -->
+<div class="world iso" data-unit="56" data-origin="940 460"
+     data-cam-hook="0 1.32 #a0, 100% 1.4 #a0"
+     data-cam-script="0 1.4 #a0, 1.13 1.3 #a1, 100% 1.34 #a1"
+     data-cam-voice="0 1.34 #a1, 1.4 1.3 #a2, 100% 1.36 #a2"
+     data-cam-scenes="0 1.36 #a2, 1.28 1.3 #a3, 100% 1.36 #a3"
+     data-cam-sound="0 1.36 #a3, 1.38 1.3 #a4, 100% 1.36 #a4"
+     data-cam-mp4="0 1.36 #a4, 1.09 1.3 #a5, 100% 1.36 #a5"
+     data-cam-skills="0 1.36 #a5, 1.49 1.08 #a6, 6.53 1.12 #a6, -0.1 .72 #a6b"
+     data-cam-before="0 .72 #a6b, 1.42 1.3 #a7n, 3.01 1.32 #a7n, -0.1 1.02 #a7"
+     data-cam-result="0 1.02 #a7, 100% 1.06 #a7"
+     data-cam-end="0 1.06 #a7, 2.1 .37 #aAll, 100% .36 #aAll">
+  <!-- ground, the road, the skills plaza, the stage -->
+  <div data-tile="-4 -7 74 19" style="--c: var(--floor)"></div>
+  <div data-tile="-1 0.4 63 1.2" style="--c: var(--road)"></div>
+  <div data-tile="40 -6 11 10" style="--c: #d4dce8"></div>
+
+  <!-- camera anchors -->
+  <i id="a0" data-pin="3.1 -0.6 2.84"></i>
+  <i id="a1" data-pin="1.5 1 2.84"></i>
+  <i id="a2" data-pin="10.5 1 1.6"></i>
+  <i id="a3" data-pin="19.5 1 1.6"></i>
+  <i id="a4" data-pin="28.5 1 1.6"></i>
+  <i id="a5" data-pin="37.5 1 1.6"></i>
+  <i id="a6" data-pin="46 0 0.45"></i>
+  <i id="a6b" data-pin="39 1 1"></i>
+  <i id="a7n" data-pin="59.21 9.79 4.1"></i>
+  <i id="a7" data-pin="64 5 4.1"></i>
+  <i id="aAll" data-pin="32.6 -1.73 0"></i>
+
+  <!-- 1 · script.md: this video's own script, typing as it is said -->
+  <div data-box="0 0 0 3 2 1" style="--c: var(--c1)"></div>
+  <div data-pin="1.5 1 1" class="panel tall" data-audit="frame safe">
+    <div class="bar" data-after="script@2.63"><i></i><i></i><i></i><b>script.md</b></div>
+    <div class="code">
+      <div class="ln h" data-after="script@1.13">## hook ~calm</div>
+      <div class="ln" data-type="hook@0.05" data-len="4.85">ไฟล์บทภาษาไทยไฟล์เดียว กลายเป็นวิดีโอแอนิเมชันที่เสร็จแล้ว คลิปนี้ก็ทำแบบนั้น</div>
+      <div class="ln h" data-type="script@0.05" data-len=".25" data-after="script@1.25">## script</div>
+      <div class="ln" data-type="script@0.35" data-len="2.6">นี่คือบลูม คุณเขียนบทเป็นฉาก ๆ ลงในไฟล์เดียว</div>
+      <div class="ln h" data-type="script@3.53" data-len=".3" data-after="script@3.53">## voice</div>
+      <div class="ln" data-type="voice@0.35" data-len=".9">บลูมพากย์ทุกฉาก…</div>
+    </div>
+  </div>
+  <div data-pin="1.5 1 0.62" class="tag acc grow" data-after="hook@4.5" data-until="script@0.3">บทของคลิปที่คุณกำลังดู</div>
+
+  <!-- the hook's promise: the script becomes a finished video (gone once the name lands) -->
+  <div data-box="5.5 -4 0 1 1 1" style="--c: var(--c2)" class="build leave" data-after="hook@1.96" data-len=".4" data-until="script@0.2"></div>
+  <div data-pin="4.39 -1.89 4.9" class="leave" data-until="script@0.2" data-len=".4">
+    <svg class="arrow" width="104" height="40" viewBox="0 0 104 40" data-run="hook@1.91" data-len=".6" data-ease="out">
+      <path d="M6 20 H92 M78 6 L94 20 L78 34" pathLength="1" fill="none" stroke="var(--accent)" stroke-width="7"
+            stroke-linecap="round" stroke-linejoin="round" style="stroke-dasharray: 1; stroke-dashoffset: calc(1 - var(--r, 0))"/>
+    </svg>
+  </div>
+  <div data-pin="6 -3.5 1" class="leave" data-until="script@0.2" data-len=".4">
+    <div class="phone grow" data-after="hook@2.25"><div class="scr" data-sheet="hook@2.25" style="background-image: url(media/news-after.jpg)"></div></div>
+  </div>
+
+  <!-- 2 · voice -->
+  <div data-pin="4.2 1 0.2" class="packet" data-run="voice@0.1" data-len="1" data-ease="inOut" data-until="voice@1.27">
+    <svg width="34" height="34" viewBox="0 0 34 34"><path d="M8 4h13l6 6v20H8z M12 14h12 M12 20h12 M12 26h8" fill="none" stroke="var(--c1)" stroke-width="3" stroke-linejoin="round"/></svg>
+  </div>
+  <div data-box="9 0 0 3 2 1" style="--c: var(--c1)" class="build" data-after="voice@0.53"></div>
+  <div data-pin="10.5 1 1" class="panel grow" data-after="voice@0.97" data-audit="frame safe">
+    <div class="bar"><i></i><i></i><i></i><b>เสียงพากย์</b></div>
+    <div class="body">
+      <div class="wave" data-after="voice@1.03" data-len="1"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="row"><span class="pill grow-in" data-after="voice@1.83">OmniVoice</span><span class="pill grow-in" data-after="voice@2.75">รันบนเครื่องคุณ</span></div>
+      <div class="row grow-in" data-after="voice@4.17"><span class="dot"></span><span>เสียงคุณ</span>
+        <span class="track" data-run="voice@5.27" data-len="1.45"><i></i></span>
+        <span class="num" data-count="voice@5.27 1.45 0 15" data-pre="0:" data-pad="2">0:00</span></div>
+    </div>
+  </div>
+
+  <!-- 3 · scenes -->
+  <div data-pin="13.2 1 0.2" class="packet" data-run="scenes@0.1" data-len="1" data-ease="inOut" data-until="scenes@1.28">
+    <svg width="34" height="34" viewBox="0 0 34 34"><path d="M4 17h4l3-8 4 16 4-12 3 6 3-2h5" fill="none" stroke="var(--c2)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div data-box="18 0 0 3 2 1" style="--c: var(--c1)" class="build" data-after="scenes@0.47"></div>
+  <div data-pin="19.5 1 1" class="panel grow" data-after="scenes@0.91" data-audit="frame safe">
+    <div class="bar"><i></i><i></i><i></i><b>scenes.html</b></div>
+    <div class="view"><div class="ground"></div><div class="sun"></div><div class="hop"></div>
+      <span class="fc pill grow-in" data-after="scenes@2.34" data-count="scenes@2.34 3.1 1 94" data-pre="เฟรม " data-pad="4">เฟรม 0001</span></div>
+    <div class="film">
+      <div class="grow-in" data-after="scenes@2.4" style="--x: 6px"></div><div class="grow-in" data-after="scenes@2.65" style="--x: 14px"></div>
+      <div class="grow-in" data-after="scenes@2.9" style="--x: 24px"></div><div class="grow-in" data-after="scenes@3.15" style="--x: 34px"></div>
+      <div class="grow-in" data-after="scenes@3.4" style="--x: 42px"></div><div class="grow-in" data-after="scenes@3.65" style="--x: 46px"></div>
+    </div>
+    <div class="sync grow-in" data-after="scenes@4.02">
+      <div class="wave"><i style="--h0:.3"></i><i style="--h0:.6"></i><i style="--h0:.9"></i><i style="--h0:.5"></i><i style="--h0:.7"></i><i style="--h0:.2"></i><i style="--h0:.4"></i><i style="--h0:.8"></i><i style="--h0:1"></i><i style="--h0:.6"></i><i style="--h0:.3"></i><i style="--h0:.15"></i><i style="--h0:.5"></i><i style="--h0:.9"></i><i style="--h0:.7"></i><i style="--h0:.4"></i><i style="--h0:.8"></i><i style="--h0:.5"></i><i style="--h0:.2"></i><i style="--h0:.6"></i><i style="--h0:.9"></i><i style="--h0:.4"></i><i style="--h0:.3"></i><i style="--h0:.7"></i></div>
+      <i class="head-line" data-run="scenes@4.08" data-len="1.6"></i>
+    </div>
+  </div>
+
+  <!-- 4 · sound -->
+  <div data-pin="22.2 1 0.2" class="packet" data-run="sound@0.1" data-len="1" data-ease="inOut" data-until="sound@1.26">
+    <svg width="34" height="34" viewBox="0 0 34 34"><rect x="4" y="7" width="26" height="20" rx="3" fill="none" stroke="var(--c1)" stroke-width="3"/><path d="M13 7v20 M21 7v20" stroke="var(--c1)" stroke-width="3"/></svg>
+  </div>
+  <div data-box="27 0 0 3 2 1" style="--c: var(--c1)" class="build" data-after="sound@0.53"></div>
+  <div data-pin="28.5 1 1" class="panel grow" data-after="sound@0.96" data-audit="frame safe">
+    <div class="bar"><i></i><i></i><i></i><b>เสียง</b></div>
+    <div class="body" style="padding-top: 8px">
+      <div class="lane"><span>เพลง</span>
+        <div><div class="roll" data-run="sound@0.53" data-len="1.8">
+          <i style="left:0;width:40px;top:30px"></i><i style="left:38px;width:20px;top:18px"></i><i style="left:62px;width:26px;top:6px"></i>
+          <i style="left:92px;width:38px;top:24px"></i><i style="left:134px;width:20px;top:12px"></i><i style="left:158px;width:30px;top:0"></i>
+          <i style="left:192px;width:18px;top:20px"></i><i style="left:214px;width:38px;top:8px"></i></div>
+        </div></div>
+      <div class="moods" style="margin: -6px 0 2px 160px"><span class="pill grow-in" data-after="sound@1.38">calm</span><span class="pill b grow-in" data-after="sound@1.98">bright</span></div>
+      <div class="lane"><span>เสียงประกอบ</span>
+        <div class="fx"><i class="m" style="left:0;width:70px"></i><i class="m" style="left:88px;width:80px"></i><i class="m" style="left:190px;width:60px"></i>
+          <i class="d" style="left:0" data-after="sound@2.95" data-len=".35"></i><i class="d" style="left:88px" data-after="sound@3.56" data-len=".35"></i>
+          <i class="d" style="left:190px" data-after="sound@4.16" data-len=".35"></i></div></div>
+      <div class="lane"><span>ความดัง</span>
+        <div class="lufs"><div class="meter" style="width: 130px" data-run="sound@5.13" data-len="1.4" data-ease="out"><i></i><b></b></div>
+          <span class="num" data-count="sound@5.13 1.4 -40 -14" data-post=" LUFS">-40 LUFS</span></div></div>
+    </div>
+  </div>
+
+  <!-- 5 · mp4 -->
+  <div data-pin="31.2 1 0.2" class="packet" data-run="mp4@0.1" data-len=".9" data-ease="inOut" data-until="mp4@1.09">
+    <svg width="34" height="34" viewBox="0 0 34 34"><path d="M12 26V8l16-3v18" fill="none" stroke="var(--c1)" stroke-width="3" stroke-linejoin="round"/><circle cx="9" cy="26" r="4" fill="var(--c1)"/><circle cx="25" cy="23" r="4" fill="var(--c1)"/></svg>
+  </div>
+  <div data-box="36 0 0 3 2 1" style="--c: var(--c2)" class="build" data-after="mp4@0.41"></div>
+  <div data-pin="37.5 1 1" class="panel grow" data-after="mp4@0.75" data-audit="frame safe">
+    <div class="bar"><i></i><i></i><i></i><b>bloom-intro</b><span class="pill on grow-in" data-after="mp4@0.92">MP4</span></div>
+    <div class="screen" data-run="mp4@0.75" data-len="3.4">
+      <svg class="mini" width="250" height="120" viewBox="0 0 250 120">
+        <polygon points="125,40 245,100 125,160 5,100" fill="#2b3a50" transform="translate(0 -40)"/>
+        <g transform="translate(60 40)"><polygon points="20,0 40,10 20,20 0,10" fill="#9fbaf6"/><polygon points="0,10 20,20 20,44 0,34" fill="#5b8def"/><polygon points="20,20 40,10 40,34 20,44" fill="#3d63b0"/></g>
+        <g transform="translate(110 22)"><polygon points="20,0 40,10 20,20 0,10" fill="#8ee3d2"/><polygon points="0,10 20,20 20,52 0,42" fill="#2ec4a6"/><polygon points="20,20 40,10 40,42 20,52" fill="#1f8a74"/></g>
+        <g transform="translate(160 46)"><polygon points="20,0 40,10 20,20 0,10" fill="#ffd79a"/><polygon points="0,10 20,20 20,38 0,28" fill="#ffb84d"/><polygon points="20,20 40,10 40,28 20,38" fill="#b98232"/></g>
+      </svg>
+      <svg class="mute grow-in" data-after="mp4@2.35" width="40" height="40" viewBox="0 0 40 40"><path d="M6 15h7l9-7v24l-9-7H6z" fill="#fff"/><path d="M27 15l9 10 M36 15l-9 10" stroke="var(--accent)" stroke-width="4" stroke-linecap="round"/></svg>
+      <span class="sub" data-after="mp4@1.38" data-len=".7">ปิดเสียงดูก็ยังรู้เรื่อง</span>
+      <div class="prog"><i></i></div>
+    </div>
+  </div>
+
+  <!-- 6 · the skills: three levels on the plaza, one per name -->
+  <div data-box="42 2 0 2 2 1" style="--c: var(--c3)" class="build" data-after="skills@1.61"></div>
+  <div data-box="45 -1 0 2 2 1.4" style="--c: var(--c3)" class="build" data-after="skills@3.89"></div>
+  <div data-box="48 -4 0 2 2 1.8" style="--c: var(--c3)" class="build" data-after="skills@5.63"></div>
+  <div data-pin="43 3 1.15" class="tag skill grow" data-after="skills@1.79" data-until="before@0"><b>bloom-story</b><small>หาเรื่อง ตรวจเรื่อง</small></div>
+  <div data-pin="46 0 1.55" class="tag skill grow" data-after="skills@4.07" data-until="before@0"><b>bloom-motion</b><small>ทำให้ภาพขยับ</small></div>
+  <div data-pin="49 -3 1.95" class="tag skill grow" data-after="skills@5.81" data-until="before@0"><b>bloom-longtake</b><small>ถ่ายยาวไม่ตัด</small></div>
+
+  <!-- 7 · before / after, then 8 · the three finished videos. One clock per pair: before and after play the
+       same moment side by side. -->
+  <div data-box="60 1 0 8 8 0.4" style="--c: #c9d3e0"></div>
+  <div data-pin="64 5 0.4" class="gallery">
+    <div class="pair">
+      <div class="leave" data-until="result@0.54" data-len=".6"><div class="side grow" data-after="before@0.63">
+        <span class="tag">ก่อน</span><div class="phone"><div class="scr" data-sheet="before@0.63" style="background-image: url(media/news-before.jpg)"></div></div></div></div>
+      <div class="slide" data-after="result@0.54"><div class="side grow" data-after="before@2.16">
+        <span class="tag acc">หลัง</span><div class="phone"><div class="scr" data-sheet="before@0.63" style="background-image: url(media/news-after.jpg)"></div></div>
+        <div class="names"><span class="tag name grow" data-after="result@2.08" data-until="end@0.3">ข่าว</span></div></div></div>
+    </div>
+    <div class="pair">
+      <div class="leave" data-until="result@0.66" data-len=".6"><div class="side grow" data-after="before@3.57">
+        <span class="tag">ก่อน</span><div class="phone"><div class="scr" data-sheet="before@3.57" style="background-image: url(media/doc-before.jpg)"></div></div></div></div>
+      <div class="slide" data-after="result@0.66"><div class="side grow" data-after="before@3.68">
+        <span class="tag acc">หลัง</span><div class="phone"><div class="scr" data-sheet="before@3.57" style="background-image: url(media/doc-after.jpg)"></div></div>
+        <div class="names"><span class="tag name grow" data-after="result@3.32" data-until="end@0.3">สารคดี</span></div></div></div>
+    </div>
+    <div class="pair">
+      <div class="leave" data-until="result@0.78" data-len=".6"><div class="side grow" data-after="before@4.3">
+        <span class="tag">ก่อน</span><div class="phone"><div class="scr" data-sheet="before@4.3" style="background-image: url(media/diary-before.jpg)"></div></div></div></div>
+      <div class="slide" data-after="result@0.78"><div class="side grow" data-after="before@4.4">
+        <span class="tag acc">หลัง</span><div class="phone"><div class="scr" data-sheet="before@4.3" style="background-image: url(media/diary-after.jpg)"></div></div>
+        <div class="names"><span class="tag name grow" data-after="result@3.82" data-until="end@0.3">ไดอารี่</span></div></div></div>
+    </div>
+  </div>
+  <div data-pin="59.21 9.79 -0.15" class="tag acc grow" data-after="before@3.34" data-until="result@0.41">เรื่องเดียวกัน</div>
+  <div data-pin="64 5 10.4" class="tag grow" data-after="result@0.41" data-until="end@0.3">ถ้าอินเทอร์เน็ตทั้งโลกดับ · เล่าได้สามแบบ</div>
+</div>
+
+<section data-scene="hook"></section>
+
+<section data-scene="script">
+  <div class="head out-dip"><h1 data-stagger><span class="rise" style="--at: .35s"><span>บลูม</span></span></h1>
+    <p class="wipe" style="--at: 1.13s">บทภาษาไทยเข้าไป วิดีโอออกมา</p></div>
+</section>
+
+<section data-scene="voice"></section>
+<section data-scene="scenes"></section>
+<section data-scene="sound"></section>
+<section data-scene="mp4"></section>
+<section data-scene="skills"></section>
+<section data-scene="before"></section>
+<section data-scene="result"></section>
+
+<section data-scene="end">
+  <!-- the closing question, top right: the pulled-back world runs top-left to bottom-right, so this corner is empty -->
+  <div class="ask" style="--at: 1.58s"><h1 class="words" data-split="word" style="--at: 1.74s">แล้วคุณจะเล่าเรื่องอะไร?</h1>
+    <p>github.com/daisy-technology/blooms</p></div>
+  <div class="end-cut" data-sfx="hit cut" style="--at: calc(var(--scene-dur) - .6s)"></div>
+</section>
+
+<div id="caption"></div>
+<script>
+// ---- Bloom iso kit: a clean isometric world from a few attributes. Paste BEFORE motion.js (the camera
+// measures what this builds). It runs once at load and draws nothing per frame, so it is seek-safe.
+//
+//   <div class="iso" data-unit="48" data-origin="1600 500">   the world layer; one unit = data-unit px,
+//                                                              the grid's (0,0,0) sits at data-origin
+//     <div data-box="x y z w d h" style="--c:#5b8def"></div>   a block: top lightest, left the colour,
+//                                                              right darkest (one light, always)
+//     <div data-tile="x y w d" style="--c:#e9eef5"></div>      a flat floor plate (z = 0), a road, a pad
+//     <div data-face="right x y z" style="width:220px;height:140px">…HTML…</div>
+//                                                              HTML laid on a plane: left (facing +y),
+//                                                              right (facing +x) or top. A screen on a block,
+//                                                              a sign, a card lying on the floor.
+//     <div data-pin="x y z" class="tag">ข้อความ</div>         a flat label pinned above a world point: it
+//                                                              travels with the camera and stays readable.
+//                                                              Text people read goes here, not on a face.
+//   </div>
+//
+// 2:1 dimetric (the pixel/arcade iso): +x runs down-right, +y down-left, +z straight up. No perspective:
+// height is lift, never scale. Elements are layered back to front by x + y + z automatically.
+// Each placed element keeps its own id and classes, so the motion kit works on it (data-after + .build
+// raises a block from its base; data-cam="t k #id" frames it).
+(() => {
+  document.querySelectorAll(".iso").forEach(world => {
+    const u = +world.dataset.unit || 48;
+    const [ox, oy] = (world.dataset.origin || "0 0").split(/\s+/).map(Number);
+    const P = (x, y, z) => [ox + (x - y) * u, oy + (x + y) * u / 2 - z * u];
+    const place = (el, pts, depth) => {  // size the element to its points' bounding box, return local coordinates
+      const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+      const l = Math.min(...xs), t = Math.min(...ys);
+      Object.assign(el.style, { position: "absolute", left: l + "px", top: t + "px",
+        width: Math.max(...xs) - l + "px", height: Math.max(...ys) - t + "px", zIndex: Math.round(depth * 10) + 1000 });
+      return pts.map(([x, y]) => `${(x - l).toFixed(1)},${(y - t).toFixed(1)}`);
+    };
+    const svg = (el, faces) => {
+      const w = parseFloat(el.style.width), h = parseFloat(el.style.height);
+      el.innerHTML = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="display:block;overflow:visible">` +
+        faces.map(([pts, fill]) => `<polygon points="${pts.join(" ")}" style="fill:${fill};stroke:${fill};stroke-width:.6;stroke-linejoin:round"/>`).join("") +
+        "</svg>" + el.innerHTML;
+    };
+    const TOP = "color-mix(in oklch, var(--c) 72%, white)", LEFT = "var(--c)", RIGHT = "color-mix(in oklch, var(--c) 70%, black)";
+
+    world.querySelectorAll("[data-box]").forEach(el => {
+      const [x, y, z, w, d, h] = el.dataset.box.split(/\s+/).map(Number);
+      const c = [P(x, y, z + h), P(x + w, y, z + h), P(x + w, y + d, z + h), P(x, y + d, z + h),
+                 P(x, y + d, z), P(x + w, y + d, z), P(x + w, y, z)];
+      const loc = place(el, c, x + y + z + (w + d) / 2);
+      const top = [0, 1, 2, 3].map(i => loc[i]);
+      const left = [loc[3], loc[2], loc[5], loc[4]];   // the +y face, towards the viewer's left
+      const right = [loc[2], loc[1], loc[6], loc[5]];  // the +x face, towards the viewer's right
+      svg(el, [[left, LEFT], [right, RIGHT], [top, TOP]]);
+    });
+    world.querySelectorAll("[data-tile]").forEach(el => {
+      const [x, y, w, d] = el.dataset.tile.split(/\s+/).map(Number);
+      const loc = place(el, [P(x, y, 0), P(x + w, y, 0), P(x + w, y + d, 0), P(x, y + d, 0)], x + y - 1);
+      svg(el, [[loc, "var(--c)"]]);
+    });
+    world.querySelectorAll("[data-pin]").forEach(el => {  // bottom-centre on the point, drawn over the blocks
+      const [x, y, z] = el.dataset.pin.split(/\s+/).map(Number), [px, py] = P(x, y, z);
+      Object.assign(el.style, { position: "absolute", left: px + "px", top: py + "px", translate: "-50% -100%",
+        zIndex: 100000 });
+    });
+    const M = { top: "matrix(1, .5, -1, .5, 0, 0)", left: "matrix(1, .5, 0, 1, 0, 0)", right: "matrix(1, -.5, 0, 1, 0, 0)" };
+    world.querySelectorAll("[data-face]").forEach(el => {
+      const [face, x, y, z] = el.dataset.face.split(/\s+/);
+      if (!M[face]) throw new Error(`data-face: ${face}? expected left, right or top`);
+      const [px, py] = P(+x, +y, +z);
+      Object.assign(el.style, { position: "absolute", left: px + "px", top: py + "px", transformOrigin: "0 0",
+        transform: M[face], zIndex: Math.round((+x + +y + +z + 1) * 10) + 1000 });
+    });
+  });
+})();
+
+// ---- Bloom motion kit: paste into the page after props.js (if any), in a <script> at the end of <body>.
+// Everything here is a pure function of (scene, t): no timers, no Math.random, no state between frames,
+// so the render is the same whichever frame a worker starts on (check with bloom-motion/scripts/seekcheck.py).
+//
+//   data-split="word"            Thai-safe word spans (Intl.Segmenter), each with --i for a CSS stagger
+//   data-split="char"            grapheme spans (a consonant keeps its vowels and tone marks), short strings only
+//   data-stagger                 sets --i on each child (lines of a .rise headline, items of a list)
+//   data-cam="t k cx cy, …"      camera: at scene time t, put point (cx, cy) of this element in the middle of
+//                                its frame (the section or page it sits in) at zoom k.
+//                                t is seconds, "-1.5" (from the end) or "60%". Eased in-out between keys.
+//   data-cam-<scene>="…"         the same for one scene: for a world layer outside the sections that
+//                                stays across cuts (match the last key of one scene to the first of the next)
+//   data-depth="0.3"             a layer inside a camera element: 1 moves with it, 0.3 is far away (parallax)
+//   <canvas data-particles="snow|dust|embers|confetti" data-n data-seed data-color data-at>
+//                                closed-form particles: confetti bursts at data-at, the others drift all scene
+//   data-cam keys may name an element instead of a point: "t k #station" frames that element's centre
+//   data-after="scene@t"         world state: sets --p from 0 to 1 over data-len (default .6 s, expo out) from that
+//                                moment, and keeps it 1 in every later scene (0 in earlier ones). For a long take,
+//                                where one world stays on screen through the cuts and what happened stays happened.
+//                                t is seconds, "-1.5" or "60%" of that scene. data-until="scene@t" does the same for --q.
+//                                (Not data-from: the props kit uses that for a counter's start value.)
+//   SVG <animate>                any SMIL in the shown scene is paused and set to t (it runs on the wall clock otherwise)
+//
+// window.BM has the helpers for a page's own bloomSeek code: clamp, prog, ease, spring, hash, rand, secs.
+(() => {
+  const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+  const prog = (t, a, b) => clamp((t - a) / (b - a));
+  const ease = {
+    out: p => 1 - Math.pow(1 - p, 3), in: p => p * p * p,
+    inOut: p => (p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2),
+    expo: p => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p)),
+    back: p => 1 + 2.70158 * Math.pow(p - 1, 3) + 1.70158 * Math.pow(p - 1, 2),
+  };
+  // a damped spring from 0 to 1 at seconds s: closed form, so any frame can be drawn first.
+  // bounce 0 settles without overshoot; .3 overshoots about 10 %; .5 is a comic boing
+  const spring = (s, bounce = .25, settle = .5) => {
+    if (s <= 0) return 0;
+    const w = 2 * Math.PI / settle, z = 1 - bounce;
+    if (z >= 1) return 1 - (1 + w * s) * Math.exp(-w * s);
+    const wd = w * Math.sqrt(1 - z * z);
+    return 1 - Math.exp(-z * w * s) * (Math.cos(wd * s) + (z * w / wd) * Math.sin(wd * s));
+  };
+  const hash = (a, b = 0) => {  // two integers -> [0, 1), the same every time
+    let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const rand = (seed, i, k = 0) => hash(seed * 7919 + i, k);
+  const secs = (v, dur, fallback = 0) => {
+    if (v == null || v === "") return fallback;
+    v = String(v).trim();
+    if (v.endsWith("%")) return parseFloat(v) / 100 * dur;
+    return +v < 0 ? dur + +v : +v;
+  };
+  window.BM = { clamp, prog, ease, spring, hash, rand, secs };
+
+  // ---- text: split once at load, animate with CSS (motion.css .words / .chars) on --i
+  document.querySelectorAll("[data-split]").forEach(el => {
+    const by = el.dataset.split === "char" ? "grapheme" : "word";
+    const seg = new Intl.Segmenter(el.lang || document.documentElement.lang || "th", { granularity: by });
+    let i = 0;
+    el.setAttribute("aria-label", el.textContent);
+    el.innerHTML = [...seg.segment(el.textContent)].map(({ segment, isWordLike }) =>
+      /^\s+$/.test(segment) ? segment
+        : `<span class="${by === "word" ? "w" : "c"}" style="--i:${(by === "grapheme" || isWordLike) ? i++ : Math.max(0, i - 1)}" aria-hidden="true">${segment.replace(/[&<]/g, c => c === "&" ? "&amp;" : "&lt;")}</span>`
+    ).join("");
+  });
+  document.querySelectorAll("[data-stagger]").forEach(el => [...el.children].forEach((c, k) => c.style.setProperty("--i", k)));
+
+  // ---- camera keys: "t k cx cy", or "t k #id" for the centre of an element inside the camera element
+  const centre = (cam, id) => {
+    let el = document.getElementById(id), x = 0, y = 0;
+    if (!el) throw new Error(`data-cam: no element #${id}`);
+    const w = el.offsetWidth, h = el.offsetHeight;
+    while (el && el !== cam) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
+    return [x + w / 2, y + h / 2];
+  };
+  const keys = (spec, dur, cam) => spec.split(",").map(s => s.trim().split(/\s+/))
+    .map(p => p.length === 3 && p[2].startsWith("#") ? [p[0], p[1], ...centre(cam, p[2].slice(1))] : p)
+    .filter(p => p.length >= 4).map(([t, k, x, y]) => [secs(t, dur), +k, +x, +y]).sort((a, b) => a[0] - b[0]);
+  const camAt = (ks, t) => {
+    if (t <= ks[0][0]) return ks[0].slice(1);
+    for (let j = 1; j < ks.length; j++) if (t < ks[j][0]) {
+      const [t0, ...a] = ks[j - 1], [t1, ...b] = ks[j], p = ease.inOut(prog(t, t0, t1));
+      return a.map((v, n) => v + (b[n] - v) * p);
+    }
+    return ks[ks.length - 1].slice(1);
+  };
+
+  // ---- particles: every particle's position is a formula of its age, never a step from the last frame
+  const PARTICLES = {
+    snow: (c, W, H, t, i, r) => [(r(0) * W + Math.sin(t * (.6 + r(1)) + r(2) * 6) * 18) , (r(3) * H + t * (40 + r(4) * 60)) % (H + 20) - 10, 2 + r(5) * 4, 1],
+    dust: (c, W, H, t, i, r) => [(r(0) * W + t * (r(1) - .5) * 30 + W) % W, (r(2) * H + Math.sin(t * .5 + r(3) * 6) * 24), 1 + r(4) * 2.5, .25 + .35 * (.5 + .5 * Math.sin(t * (1 + r(5)) + r(6) * 6))],
+    embers: (c, W, H, t, i, r) => { const life = 2 + r(0) * 2, age = (t + r(1) * life) % life;
+      return [r(2) * W + Math.sin(age * 2 + r(3) * 6) * 12, H - age / life * H * (.6 + r(4) * .4), 1.5 + r(5) * 2.5, 1 - age / life]; },
+    confetti: (c, W, H, t, i, r) => { if (t < 0) return null;  // a burst from the middle at data-at: gravity, drag, spin
+      // linear drag k, gravity g: x = v(1-e^-kt)/k, y adds g(t - (1-e^-kt)/k)/k; mostly upward, then it rains down
+      const k = 1.3, g = 1600, a = -Math.PI / 2 + (r(0) - .5) * 2.2, v = 400 + r(1) * 1300;
+      const vx = Math.cos(a) * v, vy = Math.sin(a) * v, d = (1 - Math.exp(-k * t)) / k;
+      return [W / 2 + vx * d, H * .55 + vy * d + g * (t - d) / k, 0, 1 - prog(t, 2.2, 3.2), t * (r(2) - .5) * 14]; },
+  };
+  const drawParticles = (cv, t, dur) => {
+    const kind = PARTICLES[cv.dataset.particles];
+    if (!kind) return;
+    const W = cv.width = cv.clientWidth || cv.width, H = cv.height = cv.clientHeight || cv.height;
+    const g = cv.getContext("2d"), n = +cv.dataset.n || 60, seed = +cv.dataset.seed || 1;
+    const colors = (cv.dataset.color || "#fff").split(/\s+/), local = t - secs(cv.dataset.at, dur, 0);
+    g.clearRect(0, 0, W, H);
+    for (let i = 0; i < n; i++) {
+      const p = kind(cv, W, H, kind === PARTICLES.confetti ? local : t, i, k => rand(seed, i, k));
+      if (!p || p[3] <= 0) continue;
+      g.globalAlpha = clamp(p[3]);
+      g.fillStyle = colors[i % colors.length];
+      if (kind === PARTICLES.confetti) {  // flat rectangles that spin and flip read as confetti; dots don't
+        g.save(); g.translate(p[0], p[1]); g.rotate(p[4]); g.scale(1, Math.cos(p[4] * 1.7)); g.fillRect(-11, -6, 22, 12); g.restore();
+      } else { g.beginPath(); g.arc(p[0], p[1], p[2], 0, Math.PI * 2); g.fill(); }
+    }
+    g.globalAlpha = 1;
+  };
+
+  // ---- world state: where each scene sits in the video, so "scene@t" is before, now or after
+  const order = [...document.querySelectorAll("[data-scene]")].map(s => s.dataset.scene);
+  const staged = [...document.querySelectorAll("[data-after], [data-until]")];
+  const stateAt = (spec, id, t, dur, len) => {
+    const [sc, at] = spec.split("@"), i = order.indexOf(sc), j = order.indexOf(id);
+    if (i < 0) throw new Error(`data-after/until: no scene ${sc}`);
+    if (i !== j) return i < j ? 1 : 0;
+    const a = secs(at, dur, 0);
+    return ease.expo(prog(t, a, a + len));
+  };
+
+  const cams = [...document.querySelectorAll("*")].filter(el => [...el.attributes].some(a => a.name.startsWith("data-cam")));
+  const before = window.bloomSeek;
+  window.bloomSeek = (id, t) => {
+    if (before) before(id, t);
+    const scene = document.querySelector(`[data-scene="${CSS.escape(id)}"]`);
+    if (!scene) return;
+    const dur = parseFloat(scene.style.getPropertyValue("--scene-dur")) || 6;
+    const mine = el => { const s = el.closest("[data-scene]"); return !s || s === scene; };
+
+    cams.forEach(el => {
+      if (!mine(el)) return;
+      const spec = el.getAttribute(`data-cam-${id}`) || el.dataset.cam;
+      if (!spec) return;
+      const ks = keys(spec, dur, el);
+      if (!ks.length) return;
+      // the point lands in the middle of the frame the element sits in (its positioned parent: the
+      // section or the page), whatever the element's own size: a world can be far bigger than the frame
+      const frame = el.offsetParent || document.body, w = frame.clientWidth, h = frame.clientHeight;
+      const [k, cx, cy] = camAt(ks, t), tx = w / 2 - cx * k, ty = h / 2 - cy * k;
+      el.style.transformOrigin = "0 0";
+      el.style.transform = `translate(${tx}px, ${ty}px) scale(${k})`;
+      el.querySelectorAll(":scope [data-depth]").forEach(layer => {  // far layers give back part of the move
+        const d = +layer.dataset.depth;
+        layer.style.transform = `translate(${-(1 - d) * (tx - (w / 2 - w / 2 * k)) / k}px, ${-(1 - d) * (ty - (h / 2 - h / 2 * k)) / k}px)`;
+      });
+    });
+    staged.forEach(el => {
+      const len = +el.dataset.len || .6;
+      if (el.dataset.after) el.style.setProperty("--p", stateAt(el.dataset.after, id, t, dur, len).toFixed(4));
+      if (el.dataset.until) el.style.setProperty("--q", stateAt(el.dataset.until, id, t, dur, len).toFixed(4));
+    });
+    scene.querySelectorAll("canvas[data-particles]").forEach(cv => drawParticles(cv, t, dur));
+    scene.querySelectorAll("svg").forEach(svg => {
+      if (svg.querySelector("animate, animateTransform, animateMotion, set")) { svg.pauseAnimations(); svg.setCurrentTime(t); }
+    });
+  };
+})();
+
+</script>
+<script>
+// ---- this page's world clock: typing, counters, the voice waveform and the sprite-sheet phones, drawn from
+// (scene, t) only. DUR is each scene's length from when.py (voice + pads, at 30 fps); update it if script.md
+// or the voice changes, so the world's motion stays continuous across the cuts.
+(() => {
+  const DUR = { hook: 6.23, script: 4.07, voice: 7.77, scenes: 6.13, sound: 8.03, mp4: 4.63, skills: 8.80, before: 4.80, result: 5.07, end: 5.27 };
+  const T0 = {};
+  [...document.querySelectorAll("[data-scene]")].reduce((a, s) => (T0[s.dataset.scene] = a, a + DUR[s.dataset.scene]), 0);
+  const at = spec => { const [id, t] = spec.split("@");
+    if (!(id in T0)) throw new Error(`no scene ${id}`); return T0[id] + parseFloat(t || 0); };
+  const { prog, ease } = window.BM;
+  const esc = s => s.replace(/[&<]/g, c => (c === "&" ? "&amp;" : "&lt;"));
+  const seg = new Intl.Segmenter("th", { granularity: "grapheme" });
+  const all = sel => [...document.querySelectorAll(sel)];
+  const typed = all("[data-type]").map(el => ({ el, g: [...seg.segment(el.textContent)].map(s => s.segment),
+    a: at(el.dataset.type), len: +el.dataset.len || 1 }));
+  const runs = all("[data-run]").map(el => ({ el, a: at(el.dataset.run), len: +el.dataset.len || 1,
+    e: ease[el.dataset.ease] || (p => p) }));
+  const counts = all("[data-count]").map(el => { const [s, len, from, to] = el.dataset.count.split(/\s+/);
+    return { el, a: at(s), len: +len, from: +from, to: +to }; });
+  const sheets = all("[data-sheet]").map(el => ({ el, a: at(el.dataset.sheet) }));
+  const bars = all(".body > .wave i");
+
+  const before = window.bloomSeek;
+  window.bloomSeek = (id, t) => {
+    if (before) before(id, t);
+    if (!(id in T0)) return;
+    const now = T0[id] + t;
+    typed.forEach(o => {
+      const n = Math.round(prog(now, o.a, o.a + o.len) * o.g.length);
+      o.el.classList.toggle("typing", n > 0 && n < o.g.length);
+      o.el.innerHTML = `<span class="t">${esc(o.g.slice(0, n).join(""))}</span><span class="ghost">${esc(o.g.slice(n).join(""))}</span>`;
+    });
+    runs.forEach(o => o.el.style.setProperty("--r", o.e(prog(now, o.a, o.a + o.len)).toFixed(4)));
+    counts.forEach(o => {
+      const v = Math.round(o.from + (o.to - o.from) * prog(now, o.a, o.a + o.len));
+      const pad = +o.el.dataset.pad || 0, s = pad ? String(Math.abs(v)).padStart(pad, "0") : String(Math.abs(v));
+      o.el.textContent = (o.el.dataset.pre || "") + (v < 0 ? "-" : "") + s + (o.el.dataset.post || "");
+    });
+    sheets.forEach(o => {  // frame f = floor(local t * 10) mod 40 of an 8 x 5 sheet
+      const f = Math.floor(Math.max(0, now - o.a) * 10 + 1e-6) % 40;
+      o.el.style.backgroundPosition = `${(f % 8) / 7 * 100}% ${Math.floor(f / 8) / 4 * 100}%`;
+    });
+    bars.forEach((b, i) => b.style.setProperty("--h",
+      (.3 + .7 * Math.abs(Math.sin(i * 1.7 + now * 7.3) * Math.sin(i * .41 + now * 2.9))).toFixed(3)));
+  };
+})();
+</script>
+</body>
+</html>

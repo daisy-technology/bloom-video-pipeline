@@ -1,10 +1,12 @@
+<img src="docs/media/bloom-icon.svg" alt="" width="72" height="72">
+
 # Bloom
 
 Turn a Thai voiceover script into a finished, animated short video. Part of the Daisy Technology family.
 
-[![Bloom's intro: "Bloom", Thai script in, finished video out](docs/media/bloom-intro.jpg)](https://daisy-technology.github.io/blooms/#intro)
+[![Bloom's intro: one Thai script, three finished videos (news, documentary, diary)](docs/media/bloom-intro.jpg)](https://daisy-technology.github.io/blooms/#intro)
 
-[Watch the 33-second intro](https://daisy-technology.github.io/blooms/#intro): Thai narration with subtitles, made with Bloom itself from [`scripts/intro`](scripts/intro). The site is at [daisy-technology.github.io/blooms](https://daisy-technology.github.io/blooms/).
+[Watch the 52-second intro](https://daisy-technology.github.io/blooms/#intro): one long take through how Bloom works, from a Thai script to a finished video, with the same story before and after the motion skills. Thai narration with subtitles, made with Bloom itself from [`scripts/intro-longtake`](scripts/intro-longtake). The site is at [daisy-technology.github.io/blooms](https://daisy-technology.github.io/blooms/).
 
 You write two files: the narration (`script.md`) and the visuals as an animated web page (`scenes.html`). `bloom build` voices each scene, lays the clips on a timeline, writes subtitles, renders the page frame by frame in a headless browser, scores it with generated music and sound effects, and muxes it all into an MP4.
 
@@ -12,7 +14,7 @@ You write two files: the narration (`script.md`) and the visuals as an animated 
 script.md ──► voice (OmniVoice / ElevenLabs / say) ──► timeline ──► subtitles (.srt)
 scenes.html ─► render (Playwright → ffmpeg, picture only) ─┬─► sound-effect cues
                                                             ▼
-             music (generated per scene mood) + voice + effects ─► mix (ducking, loudnorm) ─► output/<name>.mp4
+             music (generated per scene mood) + voice + effects ─► mix (ducking) ─► master (-14 LUFS) ─► output/<name>.mp4
 ```
 
 Each scene lasts exactly as long as its voice clip plus a short pause, so picture and narration stay in sync without timing anything by hand.
@@ -44,6 +46,8 @@ uv run playwright install chromium   # the browser that renders scenes.html
 
 On a computer with an NVIDIA card, install torch's CUDA build into the same environment (pytorch.org shows the `pip install` line for your card; run it as `uv pip install …`). From then on start Bloom with `uv run --no-sync bloom …`, because a plain `uv run` puts the CPU build back.
 
+**Working with an AI agent?** Read [AGENTS.md](AGENTS.md) first (any agent: Claude Code, Codex, Cursor, Copilot, Gemini CLI). Turn on the commit hook once per clone: `git config core.hooksPath .githooks`.
+
 **3. Check it.**
 
 ```sh
@@ -66,7 +70,7 @@ uv run bloom build scripts/hello
 open output/hello.mp4
 ```
 
-Options: `--voice <provider>[:<variant>]` (see Voices), `--music auto|none|<file>` (see Music and sound effects), `--no-sfx`, `--size 1920x1080` (default is 1080x1920, vertical), `--fps 30`, `--out <folder>`.
+Options: `--voice <provider>[:<variant>]` (see Voices), `--music auto|none|<file>` (see Music and sound effects), `--no-sfx`, `--lufs -14|off`, `--size 1920x1080` (default is 1080x1920, vertical), `--fps 30`, `--out <folder>`.
 
 A project is any folder with these two files, so it can live outside this repo.
 
@@ -80,16 +84,17 @@ A project is any folder with these two files, so it can live outside this repo.
 ดู {ภ.ง.ด.90|ภองอดอเก้าสิบ} บรรทัดที่ {18|สิบแปด}
 ```
 
-`+1.5` after a scene id holds that scene 1.5 seconds past the end of its voice, which is useful for a closing frame. `~calm`, `~tense` or `~bright` sets the music's mood from that scene on. Thai spelling puts spaces around ๆ and numbers; captions treat those as glue, never as line breaks. To glue anything else, use a no-break space.
+`+1.5` after a scene id holds that scene 1.5 seconds past the end of its voice, which is useful for a closing frame. `~calm`, `~tense`, `~bright`, `~chip`, `~playful` or `~lofi` sets the music's mood from that scene on. A delivery tag in brackets, `[laughter] ดีใจจัง`, is performed by the voice and never shown in the captions (see Direct the delivery). Thai spelling puts spaces around ๆ and numbers; captions treat those as glue, never as line breaks. To glue anything else, use a no-break space.
 
 **`scenes.html`**: an ordinary page.
 
 - One `<section data-scene="<id>">` per scene. Only the current scene is shown.
-- Animate with CSS animations or the Web Animations API. Delays count from the start of the scene.
+- Animate with CSS animations or the Web Animations API. Delays count from the start of the scene. Anything outside every section (a news ticker, a logo, a frame) stays on screen across cuts and runs on the video's clock instead, so it never restarts at a cut.
 - The shown section gets a `--scene-dur` CSS variable (for example `8.4s`). Time things as a fraction of it, `animation-delay: calc(var(--scene-dur) * .4)`, and the motion follows the narration whichever voice reads it.
 - An element with `id="caption"` gets the current subtitle line written into it. Leave it out if you don't want burned-in captions.
-- For canvas or JS-driven motion, define `window.bloomSeek(sceneId, seconds)`. It is called before every frame.
-- Put `data-sfx="<effect>"` on an animated element and that effect plays the moment its animation starts: `tick`, `pop`, `swish`, `whoosh`, `thud`, `chime`, `buzz`, or `type` (one key click per step of a `steps(n)` typing animation; set `--n` on the element).
+- For canvas or JS-driven motion, define `window.bloomSeek(sceneId, seconds, videoSeconds)`. It is called before every frame; `videoSeconds` is the time on the whole video's clock, for motion that carries on across cuts.
+- Put `data-sfx="<effect>"` on an animated element and that effect plays the moment its animation starts: `tick`, `pop`, `swish`, `whoosh`, `thud`, `chime`, `buzz`, `blip`, `boing`, `zip`, `drop`, `sparkle`, `hit`, `sting`, `riser`, or `type` (one key click per step of a `steps(n)` typing animation; set `--n` on the element). Give each effect its own moment of that animation: `data-sfx="hit@end"` lands as the motion lands, `zip@.2` plays 0.2 s in, and `riser hit@end` builds over the whole motion and hits as it ends (a riser is made to the animation's length). Two tokens end the video instead of playing a sound: `cut` stops the music dead at that moment (put `hit cut@end` on a cut-to-black layer) and `fade` fades it out over the element's animation; it stays silent after.
+- The voice drives two things on `<html>` every frame: `data-mouth` (`0` shut, `1` half, `2` open, from how loud the voice is right then) and `--voice` (0 to 1). A character's mouth then moves with the words and rests in the pauses: `html[data-mouth] .talk { animation: none; opacity: 0 } html[data-mouth="2"] .talk { opacity: 1 }`.
 
 The renderer pauses every animation and seeks it to each frame's time before taking the screenshot, so a render always comes out the same no matter how fast the machine is.
 
@@ -109,6 +114,18 @@ Pick one with `--voice <provider>[:<variant>]` or `BLOOM_VOICE`. Without either,
 OmniVoice's design-a-voice mode (`instruct`) picks a new voice on every call, and Bloom voices each scene separately. So Bloom designs one reference clip per instruct (cached) and clones it for every scene. The voice then stays the same from scene to scene, and cloning is OmniVoice's most stable mode. OmniVoice garbles digits, so Bloom spells them out in Thai before it reads them (1,250 → หนึ่งพันสองร้อยห้าสิบ, 22.19 → ยี่สิบสองจุดหนึ่งเก้า). Codes and dates that shouldn't be read as amounts go in `{shown|spoken}`.
 
 ElevenLabs free plan: sign in, create a key under Settings → API Keys, and put `export ELEVENLABS_API_KEY=…` in `~/.zshenv`. The free plan includes API access and a monthly credit allowance, and requires attribution.
+
+### Direct the delivery
+
+Write the performance into the text, right before the words it shapes: `[laughter] ดีใจจังเลยค่ะ`, `ว้าว [surprise-wa] สวยมาก`. Captions and the Whisper check never see the tags. Each voice gets the ones it can perform:
+
+| Voice | Tags |
+|---|---|
+| OmniVoice | `[laughter]` `[sigh]` `[surprise-ah]` `[surprise-oh]` `[surprise-wa]` `[surprise-yo]` `[question-ah]` `[question-oh]` `[question-ei]` `[question-yi]` `[dissatisfaction-hnn]` (ElevenLabs' `[laughs]`, `[sighs]`, `[gasps]` are translated) |
+| ElevenLabs v3 | any direction (`[excited]`, `[whispers]`, `[curious]`); OmniVoice's names are translated |
+| say | none: tags are left out |
+
+A tag a voice can't perform is left out with a note, never read aloud. One or two a line, where the delivery changes. The build prints each line's pace in Thai characters a second (natural narration is about 15) and marks a line `(rushed)` over 19 or `(drags)` under 10, so pace is a number you can check rather than a feeling.
 
 Clips are cached in `<project>/.bloom/voice/`, keyed by provider, settings and text. Re-rendering after changing only the animation doesn't synthesize or bill anything again. The cache folder ignores itself in git.
 
@@ -227,15 +244,25 @@ uv run bloom batch videos.txt --voice-on gpu-box     # several videos, the next 
 
 Every video gets a score and sound effects by default. Both are synthesized, so there is nothing to license and nothing to download.
 
-- **Music** follows the video: one chord per scene, changing on the cut, with tempo and progression set by each scene's mood (`~calm`, `~tense`, `~bright`). A mood stretch starts on its home chord, and the last scene resolves there. The music fades in and out, and ducks under the voice.
-- **Sound effects** come from the page (`data-sfx`, above). Every scene change also gets a whoosh that peaks on the cut.
+- **Music** follows the video: one chord per scene, changing on the cut, with tempo and progression set by each scene's mood (`~calm`, `~tense`, `~bright`, and three dressed-up styles: `~chip` 8-bit square-wave arpeggios over a bouncing bass, `~playful` marimba, staccato bass and claps on a swung beat, `~lofi` soft electric-piano sevenths, lazy drums, a darker tone and vinyl crackle). `--mood <style>` scores the whole video in one style whatever the script says, so trying three soundtracks is three builds that reuse the voice: `bloom build scripts/flower-cat --mood chip --out output/chip`. A mood stretch starts on its home chord, and the last scene resolves there. The music fades in and out, and ducks under the voice.
+- **Sound effects** come from the page (`data-sfx`, above). Every scene change also gets a whoosh that peaks on the cut. They are one synthesized family, levelled by role the way a sound designer would: the structural ones (`hit`, `sting`, `thud`) loud, the decorative ones (`tick`, `blip`, `sparkle`) far quieter, and a `riser` under the hit it leads into, so the biggest moment is also the loudest.
+- **The music makes room for them**: it takes a breath just before a `hit`, ducks under a `riser`, and stays low under the tail of a `sting`, `sparkle` or `chime`, on short ramps that never click.
+- **The voice** gets a little presence for phone speakers (rumble off under 70 Hz, less boxiness at 300 Hz, 2 dB around 4 kHz).
+- **The master**: the finished mix is brought to -14 LUFS integrated with the true peak under -1 dBTP, the level YouTube, Spotify and the short-video apps play back at, by one gain for the whole file and a limiter that only shaves the few peaks it pushes over. The build measures the MP4 it wrote and prints the numbers (`loudness: -14.0 LUFS, true peak -1.3 dBTP`), flagging a miss. `--lufs -16` picks another target; `--lufs off` leaves the voice at the mix level (-18 LUFS), as before.
+- **Sync**: every scene lasts a whole number of frames, so the picture and the sound never drift apart over a long video.
+
+What goes where, as a sound designer would decide it (the voice leads; the big moves go in the gaps between words), is in the `bloom-sound` skill (`.claude/skills/bloom-sound/SKILL.md`). The moves themselves, a slam with squash and stretch, a jump with anticipation, a camera shake, pixel debris, a stamped headline, faces, are a CSS kit in the `bloom-character` skill (`assets/impact.css`); `scripts/flower-cat` uses all of them.
 
 `--music <file>` uses your own track instead (looped, levelled, ducked), and `--music none` or `--no-sfx` leaves either out. Bloom doesn't search stock libraries itself. If your AI client is connected to one's MCP server (Artlist, for example), ask it to put a track in `assets/`, then pass that file to `--music`. Sign-in and licensing stay with you and your client, and the CLI still runs without them. `assets/` is gitignored because stock media is licensed to you, not to everyone who clones the repo.
+
+## Stories, from an idea
+
+Ask for a video without a script, or with only a topic, and the `bloom-story` skills (in `.claude/skills/`) take it from there: find the angle and the hook (`bloom-story-idea`), check every claim against real research and stop to ask when the premise isn't supported (`bloom-story-research`), shape the beats to the voice (`bloom-story-structure`), cast up to three contrasting versions of style, character, voice and music (`bloom-story-cast`), and score them side by side (`bloom-story-review`). Every beat is acted out on screen by a prop that changes state on the words that say it, a phone failing to pay or a cable breaking with a repair ship sailing in (`bloom-story/assets/props.*`), timed with `when.py` from the voice. `bloom-visual-audit` measures every frame before a render (text out of the frame or out of its box, overlaps, tiny text, things under the platform's buttons, anything that jumps at a cut) and `bloom-visual` keeps the frames designed: composition for a vertical frame, the 12 principles of animation in seek-safe CSS, icons as Twemoji files, and the anti-slop tells to avoid. `bench/story/no-internet/` holds a worked bench: one researched prompt, three versions.
 
 ## Layout
 
 ```
-bloom/       the pipeline: script.py · voice.py · clone.py · lexicon.py · review.py · asr.py · thainum.py · subs.py · render.py · sound.py · foley.py · dub.py · mix.py · remote.py · batch.py · __main__.py
+bloom/       the pipeline: script.py · voice.py · clone.py · lexicon.py · review.py · asr.py · thainum.py · subs.py · render.py · lipsync.py · sound.py · foley.py · dub.py · mix.py · remote.py · batch.py · __main__.py
 scripts/     projects: <name>/script.md + <name>/scenes.html
 assets/      source videos, music, screenshots
 output/      rendered videos (gitignored)
