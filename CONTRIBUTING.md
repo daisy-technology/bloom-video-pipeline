@@ -72,7 +72,7 @@ git push --force-with-lease
 
 ### 3. Release: a pull request from `dev` into `main`
 
-When `dev` holds what should go out, open a PR from `dev` into `main` and merge it with **Create a merge commit**. Don't squash or rebase it. The merge commit marks the release, and it keeps `main` and `dev` on the same commits. A PR into `main` from any other branch fails the `main-from-dev` check.
+When `dev` holds what should go out, first give the release its version on `dev`: `uv version --bump minor` (or `patch` for fixes only, `major` for a breaking change), then commit and push. Open a PR from `dev` into `main` and merge it with **Create a merge commit**. Don't squash or rebase it. The merge commit marks the release, and it keeps `main` and `dev` on the same commits. A PR into `main` from any other branch fails the `main-from-dev` check, and one whose `version` in `pyproject.toml` isn't new fails the `release-tag / version` check. When the PR merges, the `release-tag` workflow tags the merge commit `v<version>` (for example `v0.3.0`) and publishes a GitHub release with notes from the merged PRs; don't tag by hand.
 
 ```sh
 gh pr create --base main --head dev
@@ -94,7 +94,8 @@ Because `main` only receives `dev`, this is normally a fast-forward. `dev` moves
 
 ## Settings this relies on (GitHub, repository owner)
 
-- Branch protection on `main`: require a pull request, and require the `main-from-dev / from-dev` status check.
+- Branch protection on `main`: require a pull request, and require the `main-from-dev / from-dev` and `release-tag / version` status checks.
+- Actions: allow GitHub Actions to create releases (Settings → Actions → General → Workflow permissions: read and write), so `release-tag` can push the tag.
 - Branch protection on `dev`: require a pull request, but allow force pushes for maintainers so step 4 can rewrite `dev` when it has to.
 - Allowed merge methods: keep **merge commits** enabled, because releases use them.
 
