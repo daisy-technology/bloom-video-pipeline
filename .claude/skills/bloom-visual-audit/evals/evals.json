@@ -1,0 +1,49 @@
+{
+  "skill_name": "bloom-visual-audit",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "ช่วยเช็ค .claude/skills/bloom-visual-audit-workspace/fixtures/no-internet-diary หน่อย (เสียง omnivoice:male, child, high pitch) ตัวหนังสือบางฉากมันล้นออกนอกเฟรม อยากรู้ว่าฉากไหนบ้าง วินาทีที่เท่าไหร่ และควรแก้ตรงไหน ก่อนจะเรนเดอร์ใหม่ ยังไม่ต้องแก้ไฟล์ เขียนสรุปมาก่อน",
+      "expected_output": "A findings list naming each scene and time where text leaves the frame or overlaps (e.g. the sticky note stamping in at ~0.25 s in every scene, the note overlapping the source line), the cause (the stamp entrance scale, the note's size), and the fix location, without editing files.",
+      "files": [
+        ".claude/skills/bloom-visual-audit-workspace/fixtures/no-internet-diary"
+      ],
+      "assertions": [
+        "Names at least three specific scenes, each with a time in seconds, where text leaves the frame or overlaps",
+        "Identifies the cause of the out-of-frame text (the sticky note's stamp entrance scaling it past the frame, or its size)",
+        "Points out the note overlapping the source line under it",
+        "Says where to fix it (a file, a CSS rule or a class)",
+        "Did not modify the fixture's scenes.html or script.md"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "the news ticker in .claude/skills/bloom-visual-audit-workspace/fixtures/no-internet-news (voice omnivoice:male, middle-aged, low pitch) looks like it stutters and jumps back every time the scene changes. why does that happen and how do I check it's fixed before I render again? don't edit anything yet, just tell me",
+      "expected_output": "Explains that Bloom seeks every animation to the scene's own time, so an element that stays across cuts restarts at each cut; identifies how persistent elements (outside the sections) should run on the video clock; gives a concrete check (an audit for jumps at cuts) and what to look for.",
+      "files": [
+        ".claude/skills/bloom-visual-audit-workspace/fixtures/no-internet-news"
+      ],
+      "assertions": [
+        "Explains that Bloom seeks each animation to the scene's own time, so an element that stays across cuts restarts at every cut",
+        "Says that elements outside the sections should run on the video's clock (or recognises that this Bloom version already does)",
+        "Gives a concrete pre-render check that compares positions across a cut (an audit for cut jumps, or frames at a scene's end vs the next scene's start)",
+        "Did not modify the fixture's scenes.html or script.md"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "I'm about to render .claude/skills/bloom-visual-audit-workspace/fixtures/no-internet-doc (voice omnivoice:female, young adult) but the layout feels messy. review it and give me a prioritized list of what's actually broken, with the scene and the moment. read-only please",
+      "expected_output": "A prioritized list in the form scene @time — issue → fix, led by measurable errors (counter numbers colliding with their labels, the ending question leaving the frame while it stamps in, result-card text collisions), then smaller-text and safe-zone warnings.",
+      "files": [
+        ".claude/skills/bloom-visual-audit-workspace/fixtures/no-internet-doc"
+      ],
+      "assertions": [
+        "Each finding names a scene and a moment (time in seconds)",
+        "Reports a counter's number colliding with its label",
+        "Reports text leaving the frame (the ending question or a headline stamping in)",
+        "The list is prioritized: measurable errors before minor warnings",
+        "Did not modify the fixture's scenes.html or script.md"
+      ]
+    }
+  ]
+}

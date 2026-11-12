@@ -1,0 +1,50 @@
+{
+ "skill_name": "bloom-motion",
+ "evals": [
+  {
+   "id": 1,
+   "name": "rework-doc-scenes",
+   "prompt": "โปรเจกต์ no-internet-doc (เสียง omnivoice:female, young adult) ฉาก cable กับ month มันดูเหมือนสไลด์ infographic มาก หัวข้อบน การ์ดตรงกลาง เราเตอร์ข้างล่าง แล้วก็ไม่มีอะไรขยับเลย อยากให้สองฉากนี้เป็นแอนิเมชันจริงๆ แบบมีกล้องเคลื่อน ของวิ่ง ตัดฉากต่อกันลื่นๆ แก้ scenes.html ได้เลย แต่ห้ามแตะ script.md นะ เสียงจะได้ไม่ต้องเจนใหม่ ทำเสร็จแล้วเช็คให้ด้วยว่าเรนเดอร์ได้ไม่พัง",
+   "expected_output": "scenes.html with the cable and month scenes rebuilt as animated scenes (a camera moving over a sea-floor world, the cable drawing on and breaking, a cut that carries over between them), seek-safe, with script.md untouched and a before/after summary.",
+   "files": [
+    "fixtures/no-internet-doc"
+   ],
+   "assertions": [
+    "script.md is unchanged (the cached voice still applies)",
+    "Every frame renders the same in and out of order (seekcheck passes)",
+    "cable and month have no quiet stretch (only ambient loops moving) longer than 3 s",
+    "No layout errors (bloom-visual-audit) in the cable and month scenes",
+    "Thai text split for animation never breaks a character cluster"
+   ]
+  },
+  {
+   "id": 2,
+   "name": "lucky-draw-flicker",
+   "prompt": "my bloom project lucky-draw looks right when I scrub it in the browser but the rendered mp4 is a mess: the sparkles jump to random spots every frame, the wheel is at a different angle every time I render, and the prize number sometimes starts at 25,000 instead of counting up, and the pink badge doesn't pop. it renders with 3 workers on my machine if that matters. fix the page so it renders the same every time",
+   "expected_output": "A fixed scenes.html whose every frame depends only on (scene, t): seeded sparkles, the wheel driven by CSS or synced SMIL, the count computed from t, the badge as a keyframe animation; verified by drawing frames out of order; an explanation of each cause.",
+   "files": [
+    "fixtures/lucky-draw"
+   ],
+   "assertions": [
+    "Every frame renders the same in and out of order (seekcheck passes)",
+    "No wall-clock or random sources left in the page's code",
+    "Prize counts up from the start of the win scene and ends on 25,000, even when a worker starts at that scene",
+    "The badge is hidden early in the win scene and fully shown by 3 s"
+   ]
+  },
+  {
+   "id": 3,
+   "name": "new-qr-journey",
+   "prompt": "ทำโปรเจกต์ bloom ใหม่ชื่อ qr-journey 3 ฉาก เล่าว่าเงินเดินทางไปยังไงตอนเราสแกน QR จ่ายร้านข้าวมันไก่ ตั้งแต่กดจ่ายจนเงินเข้าบัญชีแม่ค้า ภาษาไทย ไม่ต้องอ้างอิงงานวิจัย อยากให้มันดูเป็นหนังแอนิเมชันสั้นๆ ไม่ใช่สไลด์ ยังไม่ต้อง build วิดีโอ แค่ทำ script.md กับ scenes.html ให้พร้อมเรนเดอร์",
+   "expected_output": "A new Bloom project (script.md with 3 Thai scenes, scenes.html) that reads as an animated short: a world the camera travels through following the money, kinetic Thai type split by word, things travelling and drawing on, cuts that carry over; seek-safe and free of layout errors.",
+   "files": [],
+   "assertions": [
+    "script.md has 3 scenes in Thai and scenes.html has a section for each",
+    "Every frame renders the same in and out of order (seekcheck passes)",
+    "No scene has a quiet stretch (only ambient loops moving) longer than 3 s",
+    "No layout errors (bloom-visual-audit)",
+    "Thai text split for animation never breaks a character cluster"
+   ]
+  }
+ ]
+}

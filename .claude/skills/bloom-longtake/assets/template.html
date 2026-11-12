@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>Bloom long take</title>
+<style>
+  /* ---- A 16:9 long take (1920x1080): one isometric world outside the sections stays on screen the
+     whole video; the camera travels it station by station (data-cam-<scene>), each station builds as its
+     words are said (data-after) and stays built. The sections hold only what is read: the header, labels.
+     Replace the example stations (script → voice → video) with the subject's own. */
+  :root {
+    --bg: #eef2f7; --ink: #17202c; --soft: #5b6676; --accent: #ff5d73;
+    --c1: #5b8def; --c2: #2ec4a6; --c3: #ffb84d; --floor: #dde4ee;
+    --u: .4s; --stagger: 60ms;
+  }
+  @font-face { font-family: Mitr; src: url(fonts/Mitr-Regular.ttf); font-weight: 400; }
+  @font-face { font-family: Mitr; src: url(fonts/Mitr-SemiBold.ttf); font-weight: 600; }
+  html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg);
+               font-family: Mitr, system-ui, sans-serif; color: var(--ink); }
+  section { position: absolute; inset: 0; z-index: 10; }
+
+  /* the world: bigger than the frame; the camera (motion.js) moves it */
+  /* z-index 0 gives the world its own layer: its blocks stack among themselves (iso.js), never over a section */
+  .world { position: absolute; left: 0; top: 0; z-index: 0; width: 3600px; height: 2200px; }
+  .world .face { font: 600 34px Mitr; color: #fff; padding: 14px 18px; box-sizing: border-box; }
+  /* screens on blocks are decoration (the label people read is a pin), so the audit leaves their size alone */
+  .world .face.screen { background: #17202c; border-radius: 10px; color: #cfe3ff; font-weight: 400; line-height: 1.35; }
+
+  /* what is read sits in screen space, inside the title-safe area (5 % = 96 x 54 px) */
+  .head { position: absolute; left: 120px; top: 84px; }
+  .head h1 { margin: 0; font-size: 72px; line-height: 1.2; font-weight: 600; }
+  .head p { margin: 10px 0 0; font-size: 30px; color: var(--soft); }
+  .ask { position: absolute; left: 50%; top: 120px; translate: -50% 0; padding: 22px 48px 44px; border-radius: 28px;
+         animation: m-fade .3s ease-out var(--at) both;
+         background: color-mix(in oklch, var(--bg) 92%, transparent); box-shadow: 0 20px 60px #17202c1f; }
+  .ask h1 { margin: 0; font-size: 72px; line-height: 1.25; font-weight: 600; white-space: nowrap; }
+  .tag { position: absolute; font-size: 34px; font-weight: 600; background: #fff; padding: 10px 22px;
+         border-radius: 999px; box-shadow: 0 10px 30px #17202c22; }
+  #caption { position: absolute; left: 240px; right: 240px; bottom: 90px; z-index: 50; text-align: center;
+             font-size: 44px; line-height: 1.35; }
+  #caption:empty { display: none; }
+
+  /*KIT:motion.css*/
+</style>
+</head>
+<body>
+
+<!-- the world: outside every section, so it never hides at a cut. One camera key list per scene; each
+     scene's first key equals the previous scene's last, so the picture never jumps. -->
+<div class="world iso" data-unit="56" data-origin="1700 520"
+     data-cam-hello="0 .7 #s1, 2.4 .85 #s1, -0.2 1 #s1"
+     data-cam-voice="0 1 #s1, 1.4 1 #s2"
+     data-cam-video="0 1 #s2, 1.4 1 #s3, -1.6 1 #s3, -0.3 .62 #all">
+  <div id="all" data-tile="-2 -2 22 10" style="--c: var(--floor)"></div>
+  <div data-tile="0 2 18 2" style="--c: #cfd8e5"></div>                      <!-- the road the camera follows -->
+
+  <div id="s1" data-box="1 0 0 3 2 2" style="--c: var(--c1)" class="build" data-after="hello@.15"></div>
+  <div data-face="right 4 0.2 1.7" class="face screen grow" data-audit="small hidden" data-after="hello@.7" style="width:170px;height:100px">script.md</div>
+
+  <div data-pin="2.5 1 2.6" class="tag grow" data-after="hello@1.2" data-until="voice@.6">สคริปต์</div>
+
+  <div id="s2" data-box="8 0 0 3 2 3" style="--c: var(--c2)" class="build" data-after="voice@1.4"></div>
+  <div data-box="9 0.5 3 1 1 .6" style="--c: var(--c2)" class="build" data-after="voice@2" data-len=".4"></div>
+  <div data-box="11.3 0.6 0 .8 .8 1.2" style="--c: var(--c2)" class="build" data-after="voice@3.4" data-len=".4"></div>
+
+  <div data-pin="9.5 1 4" class="tag grow" data-after="voice@1.6" data-until="video@.6">เสียงพากย์</div>
+
+  <div id="s3" data-box="15 0 0 3 2 2" style="--c: var(--c3)" class="build" data-after="video@1.4"></div>
+  <div data-face="right 18 0.2 1.7" class="face screen grow" data-audit="small hidden" data-after="video@2" style="width:170px;height:100px">▶ 0:42</div>
+  <div data-pin="16.5 1 2.6" class="tag grow" data-after="video@1.6" data-until="video@-3.4">วิดีโอพร้อมซับ</div>
+</div>
+
+<section data-scene="hello">
+  <div class="head"><h1 data-stagger><span class="rise"><span>บลูม</span></span></h1>
+    <p class="wipe" style="--at:.8s">สคริปต์ภาษาไทยเข้าไป วิดีโอออกมา</p></div>
+</section>
+
+<section data-scene="voice"></section>
+
+<section data-scene="video">
+  <!-- the closing question: on its own card, so the pulled-back world can sit behind it -->
+  <div class="ask" style="--at: calc(var(--scene-dur) - 3.1s)"><h1 class="words" data-split="word" style="--at: calc(var(--scene-dur) - 3s)">แล้วคุณจะเล่าเรื่องอะไร?</h1></div>
+  <div class="end-cut" data-sfx="hit cut" style="--at: calc(var(--scene-dur) - .6s)"></div>
+</section>
+
+<div id="caption"></div>
+<script>
+//KIT:iso.js
+//KIT:motion.js
+</script>
+</body>
+</html>

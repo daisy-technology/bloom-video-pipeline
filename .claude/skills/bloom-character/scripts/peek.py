@@ -16,6 +16,8 @@ Checks:
   reverse    no steps() animation runs in reverse (a pose swap built that way blanks on one frame)
   frame      every [data-character] element of the shown scene lies inside the frame
              (scenery that drifts off on purpose, like clouds, is not marked)
+  sounds     every data-sfx names known effects with a valid moment (hit@end, zip@.2), and the
+             report lists where each one lands, assuming a 6 s scene, to check against the voice
 """
 from __future__ import annotations
 
@@ -29,7 +31,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path.cwd()))
-from bloom.render import HIDE_OTHERS, SEEK, SHOW  # noqa: E402
+from bloom.render import CUES, HIDE_OTHERS, SEEK, SHOW, cue_events  # noqa: E402
 
 PROBE = r"""() => {
   const styles = [...document.querySelectorAll('style')].map(s => s.textContent).join('\n')
@@ -107,10 +109,14 @@ def main() -> int:
         if info["capFamily"] not in {f["family"] for f in info["faces"] if f["status"] == "loaded"}:
             problems.append(f"fonts: captions use {info['capFamily']!r}, which no loaded @font-face provides")
 
-        shots, report["bounds"] = [], {}
+        shots, report["bounds"], report["sounds"] = [], {}, {}
         for sid in ids or info["scenes"]:
             if not page.evaluate(SHOW, [sid, 6]):
                 continue
+            try:
+                report["sounds"][sid] = [f"{e['sfx']} @{e['t']:.2f}s" for c in page.evaluate(CUES) for e in cue_events(c, 0.0, 6)]
+            except ValueError as e:
+                problems.append(f"sounds: scene {sid}: {e}")
             page.evaluate(SEEK, [sid, a.at, "ตัวอย่างคำบรรยาย Sample caption"])
             for n in page.evaluate(REVERSED):
                 problems.append(f"reverse: {n!r} in scene {sid} runs steps() in reverse; at the halfway frame neither "
@@ -135,6 +141,8 @@ def main() -> int:
     (out / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1))
     print(f"sheet: {out / 'sheet.png'}")
     print(f"fonts: {', '.join(f'{f['family']} {f['weight']} {f['status']}' for f in info['faces']) or 'none'}")
+    for sid, cues in report["sounds"].items():
+        print(f"sounds {sid}: {', '.join(cues) or 'none'}")
     print("\n".join(problems) if problems else "ok: no problems found")
     return 1 if problems else 0
 
