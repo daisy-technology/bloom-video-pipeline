@@ -854,6 +854,22 @@ def test_compose_spec():
     assert '<section data-scene="two">' in html and 'data-sfx="hit cut" style="--at: 3.5s"' in html
     assert html.index('id="q"') > html.index('<section data-scene="two">')  # a screen thing lives in its scene
 
+    # a line drawn again (--retake) is timed from that take, not the first one
+    import json
+    import wave
+    from bloom import voice
+    from bloom.compose.timing import timing
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        (d / "script.md").write_text("## a\nสวัสดี\n", encoding="utf-8")
+        (d / ".bloom" / "voice").mkdir(parents=True)
+        (d / ".bloom" / "takes.json").write_text(json.dumps({"a": 1}))
+        clip = voice._clip("สวัสดี", d / ".bloom" / "voice", "say", None, 1)[3]
+        with wave.open(str(clip), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(b"\0\0" * 16000)
+        got = timing(d, "say")[0]
+        assert not got.get("missing") and abs(got["speak"] - 1.0) < 0.01, got
+
 
 def test_batch():
     import contextlib

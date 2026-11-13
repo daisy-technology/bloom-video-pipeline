@@ -75,7 +75,8 @@ PROBE = r"""([W, H]) => {
     return c; };
   const cut = (q, c) => { const l = Math.max(q.left, c.l), t = Math.max(q.top, c.t);
     const rr = Math.min(q.left + q.width, c.r), bb = Math.min(q.top + q.height, c.b);
-    return { left: l, top: t, width: rr - l, height: bb - t, right: rr, bottom: bb }; };
+    // wholly clipped gives 0, not a negative size (a negative area made every overlap test pass)
+    return { left: l, top: t, width: Math.max(0, rr - l), height: Math.max(0, bb - t), right: rr, bottom: bb }; };
   const scope = [...(on ? on.querySelectorAll('*') : []), ...document.querySelectorAll('body > *:not([data-scene]) , body > *:not([data-scene]) *')];
   const out = [];
   for (const el of new Set(scope)) {
