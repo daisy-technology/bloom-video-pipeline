@@ -35,6 +35,19 @@ Once the video announces its structure, it must keep to it: a video that says "1
 - Match the particles to the narrator: ครับ for a man, ค่ะ for a woman, none for a newsreader.
 - Cut every word that doesn't carry the story (Indeed's "directness" and "editing"), then read it aloud once at speaking pace.
 
+## Run the hook loop
+
+A video keeps a viewer the way a habit-forming product keeps a user. Nir Eyal's Hook model ([How to manufacture desire](https://www.nirandfar.com/how-to-manufacture-desire/)) has four phases. Each one has a job in a Bloom script:
+
+| Phase | In a product | In the video | Write it as |
+|---|---|---|---|
+| Trigger | external: a notification; internal: a feeling the user already has ("the first-to-mind solution wins") | external: the first frame and its headline, read with the sound off. Internal: an itch the viewer already feels, named in their words in the first line ("คลิปหนึ่งนาที ทำไมต้องตัดต่อทั้งวัน") | `itch:` in `story.md`, said in the hook scene before anything about the subject |
+| Action | the easiest behavior done in anticipation of a reward (motivation × ability) | staying for the next 3 seconds. Make it cheap: no logo, intro or setup before the itch, one idea per scene, the first reward inside 5 s | the hook scene ≤ 5 s, and scene 2 already pays something off |
+| Variable reward | a reward that's sometimes different; "predictable feedback loops don't create desire" | every scene pays off, but not the same way twice: a number counting up, a before/after flip, a reveal ("this video came from that file"), a laugh, the picture landing on the exact word. Open a small question in one scene and answer it in the next | each scene's `act:` comment names its reward, and no two scenes in a row share the same kind |
+| Investment | the user puts something in (data, effort, a follow) that loads the next trigger | the ending asks the viewer to put something in: answer the question in a comment, try one step, choose the next part. That effort is what brings them back (a reply notification, part 2) | the closing question (see End on a hook) is one the viewer can actually answer or do, in one line |
+
+Use the loop the way the article ends: to give the viewer something worth their time. The truth rules still win. An itch is a feeling the viewer really has, and every reward is something true.
+
 ## End on a hook
 
 End every Bloom video on something the viewer wants answered, then stop the picture and the music together. Do not close on a summary that wraps everything up. Decide which ending this story has before writing the last scene, and record it in `story.md` as `next:`.
@@ -62,6 +75,7 @@ Put each scene's big move in a gap of the voice: before the first word, on a phr
 
 - every scene's comment names an action (before → trigger → result), not only text
 - the hook makes the promise in the first scene and reads with the sound off
+- the hook loop holds: the itch comes first, the first reward lands inside 5 s, rewards vary scene to scene, and the ending asks the viewer to invest something
 - every promised ladder step is delivered, each worse than the last
 - each factual scene has its source in `research.md` and on screen
 - the turn is one concrete fact or image
