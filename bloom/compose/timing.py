@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .. import lexicon, script, subs, thainum, voice
+from .. import lexicon, review, script, subs, thainum, voice
 
 PAD_IN, PAD_OUT = 0.35, 0.55  # bloom.__main__'s pads: the voice starts 0.35 s into a scene
 
@@ -18,11 +18,13 @@ def timing(project: Path, spec: str | None, fps: int = 30) -> list[dict]:
     start, or {"id", "missing": True} when its clip hasn't been made with this voice yet."""
     pairs = lexicon.load(project / "lexicon.tsv")
     cache = project / ".bloom" / "voice"
+    takes = review.update_takes(project / ".bloom" / "takes.json")  # the take the build uses (--retake)
     out = []
     for s in script.parse(project / "script.md"):
-        clip = voice._clip(lexicon.apply(s["speech"], pairs), cache, spec, None)[3]
+        k = takes.get(s["id"], 0)
+        clip = voice._clip(lexicon.apply(s["speech"], pairs), cache, spec, None, k)[3]
         if not clip.exists():  # a clip made before a lexicon entry changed this line still times it
-            clip = voice._clip(s["speech"], cache, spec, None)[3]
+            clip = voice._clip(s["speech"], cache, spec, None, k)[3]
         if not clip.exists():
             out.append({"id": s["id"], "missing": True})
             continue

@@ -158,8 +158,8 @@ def compose(spec: dict, timing: list[dict], project: Path) -> str:
   .phone {{ display: flex; flex-direction: column; align-items: center; gap: 12px; }}
   .phone .screen {{ border-radius: 22px; border: 8px solid var(--ink); background-color: #000;
                     box-shadow: 0 24px 60px #17202c33; }}
-  .counter {{ text-align: center; background: #fff; border-radius: 18px; padding: 10px 26px; box-shadow: 0 14px 40px #17202c22; }}
-  .counter b {{ display: block; font-size: 64px; line-height: 1.15; font-variant-numeric: tabular-nums; }}
+  .counter {{ white-space: nowrap; text-align: center; background: #fff; border-radius: 18px; padding: 10px 26px; box-shadow: 0 14px 40px #17202c22; }}
+  .counter b {{ display: block; font-size: 64px; line-height: 1.4; font-variant-numeric: tabular-nums; }}
   .counter small {{ font-size: 24px; color: var(--soft); }}
   .wline path {{ fill: none; stroke: var(--c); stroke-width: 10; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }}
   .head {{ position: absolute; {look['head']}; }}
